@@ -21,7 +21,15 @@ static void relayout(void);
 
 static void layout_size_allocate(GtkWidget *widget, GtkAllocation *allocation, gpointer user_data)
 {
+    printf("layout_size_allocate: %dx%d+%d+%d\n",
+	    allocation->width, allocation->height, allocation->x, allocation->y);
     relayout();
+}
+
+static void img_size_allocate(GtkWidget *widget, GtkAllocation *allocation, gpointer user_data)
+{
+    printf("img_size_allocate: %dx%d+%d+%d\n",
+	    allocation->width, allocation->height, allocation->x, allocation->y);
 }
 
 static void relayout(void)
@@ -30,23 +38,21 @@ static void relayout(void)
     
     if (is_fullscreen) {
 	if (layout == NULL) {
+	    gtk_widget_destroy(img);
+	    img = NULL;
+	    
 	    layout = gtk_layout_new(NULL, NULL);
 	    g_signal_connect_after(G_OBJECT(layout), "size-allocate", G_CALLBACK(layout_size_allocate), NULL);
 	    gtk_widget_show(layout);
-	    g_object_ref(img);
-	    gtk_container_remove(GTK_CONTAINER(win), img);
 	    gtk_container_add(GTK_CONTAINER(win), layout);
-	    gtk_layout_put(GTK_LAYOUT(layout), img, 0, 0);
-	    g_object_unref(img);
 	}
     } else {
 	if (layout != NULL) {
-	    g_object_ref(img);
-	    gtk_container_remove(GTK_CONTAINER(layout), img);
-	    gtk_container_remove(GTK_CONTAINER(win), layout);
+	    gtk_widget_destroy(img);
+	    img = NULL;
+	    
+	    gtk_widget_destroy(layout);
 	    layout = NULL;
-	    gtk_container_add(GTK_CONTAINER(win), img);
-	    g_object_unref(img);
 	}
     }
     
@@ -94,7 +100,18 @@ static void relayout(void)
     }
     g_object_unref(pb_old);
     
-    gtk_image_set_from_pixbuf(GTK_IMAGE(img), pb);
+    if (img != NULL)
+	gtk_image_set_from_pixbuf(GTK_IMAGE(img), pb);
+    else {
+	img = gtk_image_new_from_pixbuf(pb);
+	g_signal_connect_after(G_OBJECT(img), "size-allocate", G_CALLBACK(img_size_allocate), NULL);
+	gtk_widget_show(img);
+	if (layout == NULL)
+	    gtk_container_add(GTK_CONTAINER(win), img);
+	else
+	    gtk_layout_put(GTK_LAYOUT(layout), img, 0, 0);
+    }
+    gtk_widget_get_preferred_size(img, NULL, NULL);		// hack!
     
     if (is_fullscreen) {
 	GtkAllocation alloc;
@@ -118,6 +135,7 @@ static void relayout(void)
 		x = w / 2;
 	    if (x + w / 2 < lw)
 		x = lw - w / 2;
+	    tx = x - lw / 2;
 	}
 	if (h > lh) {
 	    y += ty;
@@ -125,11 +143,11 @@ static void relayout(void)
 		y = h / 2;
 	    if (y + h / 2 < lh)
 		y = lh - h / 2;
+	    ty = y - lh / 2;
 	}
 	
-	gtk_widget_get_allocation(win, &alloc);
-	// gtk_widget_set_size_request(layout, alloc.width, alloc.height);
-	printf("img: +%d+%d\n", x - w / 2, y - h / 2);
+	gtk_widget_get_allocation(img, &alloc);
+	printf("img: %dx%d+%d+%d\n", alloc.width, alloc.height, alloc.x, alloc.y);
 	gtk_layout_move(GTK_LAYOUT(layout), img, x - w / 2, y - h / 2);
     } else {
 	GtkAllocation alloc;
