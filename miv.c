@@ -12,8 +12,8 @@ static GtkWidget *win, *layout = NULL;
 static gboolean is_fullscreen = FALSE;
 static GdkPixbuf *pixbuf;
 static GtkWidget *img;
-static GtkWidget *status = NULL;
-static GtkWidget *labels = NULL;
+static GtkWidget *status = NULL, *mode_label;
+static GtkWidget *labelbox = NULL;
 static int mode = 0;
 static int rotate = 0;	// 0, 90, 180, or 270
 static int scale = 0;
@@ -41,6 +41,13 @@ static void img_size_allocate(GtkWidget *widget, GtkAllocation *allocation, gpoi
 	    allocation->width, allocation->height, allocation->x, allocation->y);
 }
 
+static void add_css_provider(GtkWidget *label)
+{
+    GtkStyleContext *style_context;
+    style_context = gtk_widget_get_style_context(label);
+    gtk_style_context_add_provider(style_context, GTK_STYLE_PROVIDER(css_provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+}
+
 static void relayout(void)
 {
     GString *str = g_string_new("");
@@ -57,12 +64,23 @@ static void relayout(void)
 	    gtk_widget_show(layout);
 	    gtk_container_add(GTK_CONTAINER(win), layout);
 	    
-	    GtkStyleContext *style_context;
+	    labelbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+	    gtk_widget_show(labelbox);
+	    gtk_layout_put(GTK_LAYOUT(layout), labelbox, 0, 0);
+	    
 	    status = gtk_label_new("");
-	    style_context = gtk_widget_get_style_context(status);
-	    gtk_style_context_add_provider(style_context, GTK_STYLE_PROVIDER(css_provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+	    add_css_provider(status);
 	    gtk_widget_show(status);
-	    gtk_layout_put(GTK_LAYOUT(layout), status, 0, 0);
+	    gtk_box_pack_start(GTK_BOX(labelbox), status, FALSE, FALSE, 0);
+	    
+	    GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+	    gtk_widget_show(hbox);
+	    gtk_box_pack_start(GTK_BOX(labelbox), hbox, FALSE, FALSE, 0);
+	    
+	    mode_label = gtk_label_new("");
+	    add_css_provider(mode_label);
+	    gtk_widget_show(mode_label);
+	    gtk_box_pack_start(GTK_BOX(hbox), mode_label, FALSE, FALSE, 0);
 	}
     } else {
 	if (layout != NULL) {
@@ -71,9 +89,10 @@ static void relayout(void)
 	    
 	    gtk_widget_destroy(layout);
 	    layout = NULL;
-	    // status is also destroyed.
+	    // these are also destroyed.
+	    labelbox = NULL;
 	    status = NULL;
-	    labels = NULL;
+	    mode_label = NULL;
 	}
     }
     
@@ -180,12 +199,6 @@ static void relayout(void)
 	gtk_widget_get_allocation(img, &alloc);
 	printf("img: %dx%d+%d+%d\n", alloc.width, alloc.height, alloc.x, alloc.y);
 	gtk_layout_move(GTK_LAYOUT(layout), img, x - w / 2, y - h / 2);
-    } else {
-	GtkAllocation alloc;
-	int w = gdk_pixbuf_get_width(pb);
-	int h = gdk_pixbuf_get_height(pb);
-	// gtk_widget_set_size_request(layout, w, h);
-	// gtk_layout_move(GTK_LAYOUT(layout), img, 0, 0);
     }
     
     gtk_window_resize(GTK_WINDOW(win), 100, 100);
@@ -193,16 +206,22 @@ static void relayout(void)
     g_object_unref(pb);
     
     gchar *s = g_string_free(str, FALSE);
-    if (status != NULL) {
+    if (labelbox != NULL) {
 	gtk_label_set_text(GTK_LABEL(status), s);
 	
-	/* In order to paint status at the last,
-	 * remove and re-put it.
+	switch (mode) {
+	case MODE_NONE:		gtk_widget_hide(mode_label); break;
+	case MODE_ROTATE:	gtk_label_set_text(GTK_LABEL(mode_label), "rotating"); gtk_widget_show(mode_label); break;
+	case MODE_SCALE:	gtk_label_set_text(GTK_LABEL(mode_label), "scaling");  gtk_widget_show(mode_label); break;
+	}
+	
+	/* In order to paint labels at the last,
+	 * remove and re-put labelbox.
 	 */
-	g_object_ref(status);
-	gtk_container_remove(GTK_CONTAINER(layout), status);
-	gtk_layout_put(GTK_LAYOUT(layout), status, 0, 0);
-	g_object_unref(status);
+	g_object_ref(labelbox);
+	gtk_container_remove(GTK_CONTAINER(layout), labelbox);
+	gtk_layout_put(GTK_LAYOUT(layout), labelbox, 0, 0);
+	g_object_unref(labelbox);
     }
     g_free(s);
 }
