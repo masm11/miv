@@ -1,5 +1,6 @@
 #include <gtk/gtk.h>
 #include <math.h>
+#include <assert.h>
 
 enum {
     MODE_NONE,
@@ -7,12 +8,16 @@ enum {
     MODE_SCALE,
 };
 
+#define MAX_STATUS_STRINGS	16
+
 static GtkCssProvider *css_provider;
 static GtkWidget *win, *layout = NULL;
 static gboolean is_fullscreen = FALSE;
 static GdkPixbuf *pixbuf;
 static GtkWidget *img;
 static GtkWidget *status = NULL, *mode_label;
+static gchar **status_strings = NULL;
+static int status_nr_string = 0;
 static GtkWidget *labelbox = NULL;
 static int mode = 0;
 static int rotate = 0;	// 0, 90, 180, or 270
@@ -48,11 +53,27 @@ static void add_css_provider(GtkWidget *label)
     gtk_style_context_add_provider(style_context, GTK_STYLE_PROVIDER(css_provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
 }
 
+static void init_status_string(void)
+{
+    if (status_strings != NULL)
+	g_strfreev(status_strings);
+    status_strings = g_new0(gchar *, MAX_STATUS_STRINGS);
+    status_strings[0] = NULL;
+    status_nr_string = 0;
+}
+
+static void add_status_string(gchar *str)
+{
+    assert(status_nr_string + 1 < MAX_STATUS_STRINGS);
+    status_strings[status_nr_string++] = str;
+    status_strings[status_nr_string] = NULL;
+}
+
 static void relayout(void)
 {
-    GString *str = g_string_new("");
-    
     GdkPixbuf *pb = NULL, *pb_old;
+    
+    init_status_string();
     
     pb_old = gdk_pixbuf_copy(pixbuf);
     switch (rotate) {
@@ -60,15 +81,15 @@ static void relayout(void)
 	pb = gdk_pixbuf_rotate_simple(pb_old, GDK_PIXBUF_ROTATE_NONE);
 	break;
     case 90:
-	g_string_append(str, "rotate 90 ");
+	add_status_string(g_strdup("rotate 90"));
 	pb = gdk_pixbuf_rotate_simple(pb_old, GDK_PIXBUF_ROTATE_CLOCKWISE);
 	break;
     case 180:
-	g_string_append(str, "rotate 180 ");
+	add_status_string(g_strdup("rotate 180"));
 	pb = gdk_pixbuf_rotate_simple(pb_old, GDK_PIXBUF_ROTATE_UPSIDEDOWN);
 	break;
     case 270:
-	g_string_append(str, "rotate 270 ");
+	add_status_string(g_strdup("rotate 270"));
 	pb = gdk_pixbuf_rotate_simple(pb_old, GDK_PIXBUF_ROTATE_COUNTERCLOCKWISE);
 	break;
     }
@@ -76,7 +97,8 @@ static void relayout(void)
     
     pb_old = pb;
     if (maximize && is_fullscreen) {
-	g_string_append(str, "maximize ");
+	add_status_string(g_strdup("maximize"));
+	
 	int w = gdk_pixbuf_get_width(pb_old);
 	int h = gdk_pixbuf_get_height(pb_old);
 	GtkAllocation alloc;
@@ -93,7 +115,7 @@ static void relayout(void)
     
     pb_old = pb;
     if (scale != 0) {
-	g_string_append_printf(str, "scale %+d ", scale);
+	add_status_string(g_strdup_printf("scale %+d", scale));
 	int width = gdk_pixbuf_get_width(pb_old);
 	int height = gdk_pixbuf_get_height(pb_old);
 	double ratio = pow(1.25, scale);
@@ -108,7 +130,7 @@ static void relayout(void)
     gtk_widget_get_preferred_size(img, NULL, NULL);		// hack!
     
     if (is_fullscreen) {
-	g_string_append(str, "fullscreen ");
+	add_status_string(g_strdup("fullscreen"));
 	
 	gtk_widget_set_size_request(layout, -1, -1);
 	
@@ -134,7 +156,8 @@ static void relayout(void)
 	    if (x + w / 2 < lw)
 		x = lw - w / 2;
 	    tx = x - lw / 2;
-	}
+	} else
+	    tx = 0;
 	if (h > lh) {
 	    y += ty;
 	    if (y - h / 2 > 0)
@@ -142,9 +165,11 @@ static void relayout(void)
 	    if (y + h / 2 < lh)
 		y = lh - h / 2;
 	    ty = y - lh / 2;
-	}
+	} else
+	    ty = 0;
 	
-	g_string_append_printf(str, "translate %+d%+d ", tx, ty);
+	if (tx != 0 || ty != 0)
+	    add_status_string(g_strdup_printf("translate %+d%+d ", tx, ty));
 	
 	gtk_widget_get_allocation(img, &alloc);
 	printf("img: %dx%d+%d+%d\n", alloc.width, alloc.height, alloc.x, alloc.y);
@@ -160,14 +185,23 @@ static void relayout(void)
     
     g_object_unref(pb);
     
-    gchar *s = g_string_free(str, FALSE);
     if (labelbox != NULL) {
+	gchar *s = g_strjoinv(", ", status_strings);
 	gtk_label_set_text(GTK_LABEL(status), s);
+	g_free(s);
 	
 	switch (mode) {
-	case MODE_NONE:		gtk_widget_hide(mode_label); break;
-	case MODE_ROTATE:	gtk_label_set_text(GTK_LABEL(mode_label), "rotating"); gtk_widget_show(mode_label); break;
-	case MODE_SCALE:	gtk_label_set_text(GTK_LABEL(mode_label), "scaling");  gtk_widget_show(mode_label); break;
+	case MODE_NONE:
+	    gtk_widget_hide(mode_label);
+	    break;
+	case MODE_ROTATE:
+	    gtk_label_set_text(GTK_LABEL(mode_label), "rotating");
+	    gtk_widget_show(mode_label);
+	    break;
+	case MODE_SCALE:
+	    gtk_label_set_text(GTK_LABEL(mode_label), "scaling");
+	    gtk_widget_show(mode_label);
+	    break;
 	}
 	
 	/* In order to paint labels at the last,
@@ -178,7 +212,6 @@ static void relayout(void)
 	gtk_layout_put(GTK_LAYOUT(layout), labelbox, 0, 0);
 	g_object_unref(labelbox);
     }
-    g_free(s);
 }
 
 static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer user_data)
