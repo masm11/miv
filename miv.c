@@ -7,15 +7,24 @@ enum {
     MODE_SCALE,
 };
 
+static GtkCssProvider *css_provider;
 static GtkWidget *win, *layout = NULL;
 static gboolean is_fullscreen = FALSE;
 static GdkPixbuf *pixbuf;
 static GtkWidget *img;
+static GtkWidget *status = NULL;
+static GtkWidget *labels = NULL;
 static int mode = 0;
 static int rotate = 0;	// 0, 90, 180, or 270
 static int scale = 0;
 static int tx = 0, ty = 0;
 static gboolean maximize = FALSE;
+
+static const char css_text[] =
+	"label {"
+	" color: #ffffff;"
+	" background-color: #000000;"
+	"}";
 
 static void relayout(void);
 
@@ -34,6 +43,8 @@ static void img_size_allocate(GtkWidget *widget, GtkAllocation *allocation, gpoi
 
 static void relayout(void)
 {
+    GString *str = g_string_new("");
+    
     GdkPixbuf *pb = NULL, *pb_old;
     
     if (is_fullscreen) {
@@ -45,6 +56,13 @@ static void relayout(void)
 	    g_signal_connect_after(G_OBJECT(layout), "size-allocate", G_CALLBACK(layout_size_allocate), NULL);
 	    gtk_widget_show(layout);
 	    gtk_container_add(GTK_CONTAINER(win), layout);
+	    
+	    GtkStyleContext *style_context;
+	    status = gtk_label_new("");
+	    style_context = gtk_widget_get_style_context(status);
+	    gtk_style_context_add_provider(style_context, GTK_STYLE_PROVIDER(css_provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+	    gtk_widget_show(status);
+	    gtk_layout_put(GTK_LAYOUT(layout), status, 0, 0);
 	}
     } else {
 	if (layout != NULL) {
@@ -53,6 +71,9 @@ static void relayout(void)
 	    
 	    gtk_widget_destroy(layout);
 	    layout = NULL;
+	    // status is also destroyed.
+	    status = NULL;
+	    labels = NULL;
 	}
     }
     
@@ -62,12 +83,15 @@ static void relayout(void)
 	pb = gdk_pixbuf_rotate_simple(pb_old, GDK_PIXBUF_ROTATE_NONE);
 	break;
     case 90:
+	g_string_append(str, "rotate 90 ");
 	pb = gdk_pixbuf_rotate_simple(pb_old, GDK_PIXBUF_ROTATE_CLOCKWISE);
 	break;
     case 180:
+	g_string_append(str, "rotate 180 ");
 	pb = gdk_pixbuf_rotate_simple(pb_old, GDK_PIXBUF_ROTATE_UPSIDEDOWN);
 	break;
     case 270:
+	g_string_append(str, "rotate 270 ");
 	pb = gdk_pixbuf_rotate_simple(pb_old, GDK_PIXBUF_ROTATE_COUNTERCLOCKWISE);
 	break;
     }
@@ -75,6 +99,7 @@ static void relayout(void)
     
     pb_old = pb;
     if (maximize && is_fullscreen) {
+	g_string_append(str, "maximize ");
 	int w = gdk_pixbuf_get_width(pb_old);
 	int h = gdk_pixbuf_get_height(pb_old);
 	GtkAllocation alloc;
@@ -90,14 +115,16 @@ static void relayout(void)
     g_object_unref(pb_old);
     
     pb_old = pb;
-    {
+    if (scale != 0) {
+	g_string_append_printf(str, "scale %+d ", scale);
 	int width = gdk_pixbuf_get_width(pb_old);
 	int height = gdk_pixbuf_get_height(pb_old);
 	double ratio = pow(1.25, scale);
 	width *= ratio;
 	height *= ratio;
 	pb = gdk_pixbuf_scale_simple(pb_old, width, height, GDK_INTERP_BILINEAR);
-    }
+    } else
+	pb = gdk_pixbuf_copy(pb_old);
     g_object_unref(pb_old);
     
     if (img != NULL)
@@ -114,6 +141,8 @@ static void relayout(void)
     gtk_widget_get_preferred_size(img, NULL, NULL);		// hack!
     
     if (is_fullscreen) {
+	g_string_append(str, "fullscreen ");
+	
 	GtkAllocation alloc;
 	int w = gdk_pixbuf_get_width(pb);
 	int h = gdk_pixbuf_get_height(pb);
@@ -146,6 +175,8 @@ static void relayout(void)
 	    ty = y - lh / 2;
 	}
 	
+	g_string_append_printf(str, "translate %+d%+d ", tx, ty);
+	
 	gtk_widget_get_allocation(img, &alloc);
 	printf("img: %dx%d+%d+%d\n", alloc.width, alloc.height, alloc.x, alloc.y);
 	gtk_layout_move(GTK_LAYOUT(layout), img, x - w / 2, y - h / 2);
@@ -160,6 +191,20 @@ static void relayout(void)
     gtk_window_resize(GTK_WINDOW(win), 100, 100);
     
     g_object_unref(pb);
+    
+    gchar *s = g_string_free(str, FALSE);
+    if (status != NULL) {
+	gtk_label_set_text(GTK_LABEL(status), s);
+	
+	/* In order to paint status at the last,
+	 * remove and re-put it.
+	 */
+	g_object_ref(status);
+	gtk_container_remove(GTK_CONTAINER(layout), status);
+	gtk_layout_put(GTK_LAYOUT(layout), status, 0, 0);
+	g_object_unref(status);
+    }
+    g_free(s);
 }
 
 static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer user_data)
@@ -272,6 +317,9 @@ int main(int argc, char **argv)
 	printf("no file specified.\n");
 	exit(1);
     }
+    
+    css_provider = gtk_css_provider_new();
+    gtk_css_provider_load_from_data(css_provider, css_text, -1, NULL);
     
     win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_default_size(GTK_WINDOW(win), 100, 100);
