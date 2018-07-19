@@ -12,7 +12,7 @@ enum {
 
 static GtkCssProvider *css_provider;
 static GtkWidget *win, *layout = NULL;
-static gboolean is_fullscreen = FALSE;
+static gboolean is_fullscreen = FALSE, is_fullscreened = FALSE;
 static GdkPixbuf *pixbuf;
 static GtkWidget *img;
 static GtkWidget *status = NULL, *mode_label;
@@ -74,6 +74,18 @@ static void relayout(void)
     GdkPixbuf *pb = NULL, *pb_old;
     
     init_status_string();
+    
+    if (is_fullscreen) {
+	if (!is_fullscreened) {
+	    gtk_window_fullscreen(GTK_WINDOW(win));
+	    is_fullscreened = TRUE;
+	}
+    } else {
+	if (is_fullscreened) {
+	    gtk_window_unfullscreen(GTK_WINDOW(win));
+	    is_fullscreened = FALSE;
+	}
+    }
     
     pb_old = gdk_pixbuf_copy(pixbuf);
     switch (rotate) {
@@ -226,13 +238,7 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
 	
     case GDK_KEY_F:
     case GDK_KEY_f:
-	if (is_fullscreen) {
-	    gtk_window_unfullscreen(GTK_WINDOW(win));
-	    is_fullscreen = FALSE;
-	} else {
-	    gtk_window_fullscreen(GTK_WINDOW(win));
-	    is_fullscreen = TRUE;
-	}
+	is_fullscreen = !is_fullscreen;
 	break;
 	
     case GDK_KEY_M:
