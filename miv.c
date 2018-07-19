@@ -199,7 +199,11 @@ static void relayout(void)
     
     if (labelbox != NULL) {
 	gchar *s = g_strjoinv(", ", status_strings);
-	gtk_label_set_text(GTK_LABEL(status), s);
+	if (strlen(s) != 0) {
+	    gtk_label_set_text(GTK_LABEL(status), s);
+	    gtk_widget_show(status);
+	} else
+	    gtk_widget_hide(status);
 	g_free(s);
 	
 	switch (mode) {
