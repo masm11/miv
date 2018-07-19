@@ -30,6 +30,9 @@ static const char css_text[] =
 	"label {"
 	" color: #ffffff;"
 	" background-color: #000000;"
+	"}"
+	"box#image-selection {"
+	" background-color: rgba(0,0,0,0.5);"
 	"}";
 
 static void relayout(void);
@@ -367,9 +370,11 @@ static GtkWidget *create_image_selection_item(const char *dir, const char *name)
 }
 #undef SIZE
 
-static GtkWidget *create_image_selection_view(void)
+static GtkWidget *create_image_selection_view(const gchar *dirname)
 {
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_set_name(vbox, "image-selection");
+    add_css_provider(vbox);
     gtk_widget_show(vbox);
     
     GtkWidget *padding = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
@@ -380,13 +385,18 @@ static GtkWidget *create_image_selection_view(void)
     gtk_box_pack_end(GTK_BOX(vbox), hbox, FALSE, FALSE, 0);
     gtk_widget_show(hbox);
     
-    GDir *dir = g_dir_open("/home/masm", 0, NULL);
+    GError *err = NULL;
+    GDir *dir = g_dir_open(dirname, 0, &err);
+    if (err != NULL) {
+	gtk_widget_destroy(vbox);
+	return NULL;
+    }
     while (TRUE) {
 	const gchar *name = g_dir_read_name(dir);
 	if (name == NULL)
 	    break;
 	
-	GtkWidget *image = create_image_selection_item("/home/masm", name);
+	GtkWidget *image = create_image_selection_item(dirname, name);
 	if (image != NULL) {
 	    gtk_box_pack_start(GTK_BOX(hbox), image, FALSE, FALSE, 0);
 	    gtk_widget_show(image);
@@ -445,8 +455,9 @@ int main(int argc, char **argv)
     gtk_widget_show(img);
     gtk_layout_put(GTK_LAYOUT(layout), img, 0, 0);
     
-    image_selection_view = create_image_selection_view();
-    gtk_layout_put(GTK_LAYOUT(layout), image_selection_view, 0, 0);
+    image_selection_view = create_image_selection_view("/home/masm");
+    if (image_selection_view != NULL)
+	gtk_layout_put(GTK_LAYOUT(layout), image_selection_view, 0, 0);
     
     gtk_main();
     
