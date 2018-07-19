@@ -54,48 +54,6 @@ static void relayout(void)
     
     GdkPixbuf *pb = NULL, *pb_old;
     
-    if (is_fullscreen) {
-	if (layout == NULL) {
-	    gtk_widget_destroy(img);
-	    img = NULL;
-	    
-	    layout = gtk_layout_new(NULL, NULL);
-	    g_signal_connect_after(G_OBJECT(layout), "size-allocate", G_CALLBACK(layout_size_allocate), NULL);
-	    gtk_widget_show(layout);
-	    gtk_container_add(GTK_CONTAINER(win), layout);
-	    
-	    labelbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-	    gtk_widget_show(labelbox);
-	    gtk_layout_put(GTK_LAYOUT(layout), labelbox, 0, 0);
-	    
-	    status = gtk_label_new("");
-	    add_css_provider(status);
-	    gtk_widget_show(status);
-	    gtk_box_pack_start(GTK_BOX(labelbox), status, FALSE, FALSE, 0);
-	    
-	    GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-	    gtk_widget_show(hbox);
-	    gtk_box_pack_start(GTK_BOX(labelbox), hbox, FALSE, FALSE, 0);
-	    
-	    mode_label = gtk_label_new("");
-	    add_css_provider(mode_label);
-	    gtk_widget_show(mode_label);
-	    gtk_box_pack_start(GTK_BOX(hbox), mode_label, FALSE, FALSE, 0);
-	}
-    } else {
-	if (layout != NULL) {
-	    gtk_widget_destroy(img);
-	    img = NULL;
-	    
-	    gtk_widget_destroy(layout);
-	    layout = NULL;
-	    // these are also destroyed.
-	    labelbox = NULL;
-	    status = NULL;
-	    mode_label = NULL;
-	}
-    }
-    
     pb_old = gdk_pixbuf_copy(pixbuf);
     switch (rotate) {
     case 0:
@@ -146,21 +104,13 @@ static void relayout(void)
 	pb = gdk_pixbuf_copy(pb_old);
     g_object_unref(pb_old);
     
-    if (img != NULL)
-	gtk_image_set_from_pixbuf(GTK_IMAGE(img), pb);
-    else {
-	img = gtk_image_new_from_pixbuf(pb);
-	g_signal_connect_after(G_OBJECT(img), "size-allocate", G_CALLBACK(img_size_allocate), NULL);
-	gtk_widget_show(img);
-	if (layout == NULL)
-	    gtk_container_add(GTK_CONTAINER(win), img);
-	else
-	    gtk_layout_put(GTK_LAYOUT(layout), img, 0, 0);
-    }
+    gtk_image_set_from_pixbuf(GTK_IMAGE(img), pb);
     gtk_widget_get_preferred_size(img, NULL, NULL);		// hack!
     
     if (is_fullscreen) {
 	g_string_append(str, "fullscreen ");
+	
+	gtk_widget_set_size_request(layout, -1, -1);
 	
 	GtkAllocation alloc;
 	int w = gdk_pixbuf_get_width(pb);
@@ -199,6 +149,11 @@ static void relayout(void)
 	gtk_widget_get_allocation(img, &alloc);
 	printf("img: %dx%d+%d+%d\n", alloc.width, alloc.height, alloc.x, alloc.y);
 	gtk_layout_move(GTK_LAYOUT(layout), img, x - w / 2, y - h / 2);
+    } else {
+	int w = gdk_pixbuf_get_width(pb);
+	int h = gdk_pixbuf_get_height(pb);
+	gtk_widget_set_size_request(layout, w, h);
+	gtk_layout_move(GTK_LAYOUT(layout), img, 0, 0);
     }
     
     gtk_window_resize(GTK_WINDOW(win), 100, 100);
@@ -345,13 +300,36 @@ int main(int argc, char **argv)
     gtk_widget_show(win);
     g_signal_connect(G_OBJECT(win), "key-press-event", G_CALLBACK(key_press_event), NULL);
     
+    layout = gtk_layout_new(NULL, NULL);
+    g_signal_connect_after(G_OBJECT(layout), "size-allocate", G_CALLBACK(layout_size_allocate), NULL);
+    gtk_widget_show(layout);
+    gtk_container_add(GTK_CONTAINER(win), layout);
+    
+    labelbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_show(labelbox);
+    gtk_layout_put(GTK_LAYOUT(layout), labelbox, 0, 0);
+    
+    status = gtk_label_new("");
+    add_css_provider(status);
+    gtk_widget_show(status);
+    gtk_box_pack_start(GTK_BOX(labelbox), status, FALSE, FALSE, 0);
+    
+    GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_show(hbox);
+    gtk_box_pack_start(GTK_BOX(labelbox), hbox, FALSE, FALSE, 0);
+    
+    mode_label = gtk_label_new("");
+    add_css_provider(mode_label);
+    gtk_widget_show(mode_label);
+    gtk_box_pack_start(GTK_BOX(hbox), mode_label, FALSE, FALSE, 0);
+    
     pixbuf = gdk_pixbuf_new_from_file(argv[1], NULL);
     int w = gdk_pixbuf_get_width(pixbuf);
     int h = gdk_pixbuf_get_height(pixbuf);
     
     img = gtk_image_new_from_pixbuf(pixbuf);
     gtk_widget_show(img);
-    gtk_container_add(GTK_CONTAINER(win), img);
+    gtk_layout_put(GTK_LAYOUT(layout), img, 0, 0);
     
     gtk_main();
     
