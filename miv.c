@@ -19,6 +19,7 @@ static GtkWidget *status = NULL, *mode_label;
 static gchar **status_strings = NULL;
 static int status_nr_string = 0;
 static GtkWidget *labelbox = NULL;
+static GtkWidget *image_selection_view = NULL;
 static int mode = 0;
 static int rotate = 0;	// 0, 90, 180, or 270
 static int scale = 0;
@@ -228,6 +229,19 @@ static void relayout(void)
 	gtk_layout_put(GTK_LAYOUT(layout), labelbox, 0, 0);
 	g_object_unref(labelbox);
     }
+    
+    {
+	GtkAllocation alloc1, alloc2;
+	int x, y, w, h;
+	gtk_widget_get_allocation(layout, &alloc1);
+	gtk_widget_get_allocation(image_selection_view, &alloc2);
+	x = 0;
+	y = alloc1.height - alloc2.height;
+	w = alloc1.width;
+	h = alloc2.height;
+	gtk_widget_set_size_request(image_selection_view, w, -1);
+	gtk_layout_move(GTK_LAYOUT(layout), image_selection_view, x, y);
+    }
 }
 
 static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer user_data)
@@ -326,6 +340,63 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
     return TRUE;
 }
 
+#define SIZE 100.0
+static GtkWidget *create_image_selection_item(const char *dir, const char *name)
+{
+    const gchar *path = g_strdup_printf("%s/%s", dir, name);
+    GError *err = NULL;
+    GdkPixbuf *pb_old = gdk_pixbuf_new_from_file(path, &err);
+    if (err != NULL)
+	return NULL;
+    int orig_w = gdk_pixbuf_get_width(pb_old);
+    int orig_h = gdk_pixbuf_get_height(pb_old);
+    double scalew = SIZE / orig_w;
+    double scaleh = SIZE / orig_h;
+    double scale = fmin(scalew, scaleh);
+    int w = orig_w * scale;
+    int h = orig_h * scale;
+    GdkPixbuf *pb = gdk_pixbuf_scale_simple(pb_old, w, h, GDK_INTERP_NEAREST);
+    
+    GtkWidget *image = gtk_image_new_from_pixbuf(pb);
+    gtk_widget_set_size_request(image, 100, 100);
+    
+    g_object_unref(pb_old);
+    g_object_unref(pb);
+    
+    return image;
+}
+#undef SIZE
+
+static GtkWidget *create_image_selection_view(void)
+{
+    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_show(vbox);
+    
+    GtkWidget *padding = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_box_pack_start(GTK_BOX(vbox), padding, TRUE, TRUE, 0);
+    gtk_widget_show(padding);
+    
+    GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_box_pack_end(GTK_BOX(vbox), hbox, FALSE, FALSE, 0);
+    gtk_widget_show(hbox);
+    
+    GDir *dir = g_dir_open("/home/masm", 0, NULL);
+    while (TRUE) {
+	const gchar *name = g_dir_read_name(dir);
+	if (name == NULL)
+	    break;
+	
+	GtkWidget *image = create_image_selection_item("/home/masm", name);
+	if (image != NULL) {
+	    gtk_box_pack_start(GTK_BOX(hbox), image, FALSE, FALSE, 0);
+	    gtk_widget_show(image);
+	}
+    }
+    g_dir_close(dir);
+    
+    return vbox;
+}
+
 int main(int argc, char **argv)
 {
     gtk_init(&argc, &argv);
@@ -373,6 +444,9 @@ int main(int argc, char **argv)
     img = gtk_image_new_from_pixbuf(pixbuf);
     gtk_widget_show(img);
     gtk_layout_put(GTK_LAYOUT(layout), img, 0, 0);
+    
+    image_selection_view = create_image_selection_view();
+    gtk_layout_put(GTK_LAYOUT(layout), image_selection_view, 0, 0);
     
     gtk_main();
     
