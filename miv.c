@@ -27,13 +27,22 @@ static int tx = 0, ty = 0;
 static gboolean maximize = FALSE;
 
 static const char css_text[] =
-	"label {"
+	"label#labelbox {"
 	" color: #ffffff;"
 	" background-color: #000000;"
 	"}"
 	"box#image-selection {"
-	" background-color: rgba(0,0,0,0.5);"
-	"}";
+	" background-color: rgba(1,1,1,0.3);"
+	"}"
+	"box#image-selection box {"
+	" margin: 5px;"
+	" padding: 5px;"
+	" background-color: rgba(0,0,0,0.7);"
+	"}"
+	"box#image-selection box label {"
+	" font-size: x-small;"
+	"}"
+;
 
 static void relayout(void);
 
@@ -360,13 +369,29 @@ static GtkWidget *create_image_selection_item(const char *dir, const char *name)
     int h = orig_h * scale;
     GdkPixbuf *pb = gdk_pixbuf_scale_simple(pb_old, w, h, GDK_INTERP_NEAREST);
     
+    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    add_css_provider(vbox);
+    
     GtkWidget *image = gtk_image_new_from_pixbuf(pb);
+    add_css_provider(image);
+    gtk_widget_set_halign(image, GTK_ALIGN_CENTER);
+    gtk_widget_set_valign(image, GTK_ALIGN_END);
     gtk_widget_set_size_request(image, 100, 100);
+    gtk_widget_get_preferred_size(image, NULL, NULL);		// hack!
+    gtk_box_pack_start(GTK_BOX(vbox), image, TRUE, TRUE, 0);
+    gtk_widget_show(image);
+    
+    GtkWidget *filename = gtk_label_new(name);
+    add_css_provider(filename);
+    gtk_widget_set_size_request(filename, 100, -1);
+    gtk_widget_get_preferred_size(filename, NULL, NULL);		// hack!
+    gtk_box_pack_end(GTK_BOX(vbox), filename, FALSE, FALSE, 0);
+    gtk_widget_show(filename);
     
     g_object_unref(pb_old);
     g_object_unref(pb);
     
-    return image;
+    return vbox;
 }
 #undef SIZE
 
@@ -396,10 +421,10 @@ static GtkWidget *create_image_selection_view(const gchar *dirname)
 	if (name == NULL)
 	    break;
 	
-	GtkWidget *image = create_image_selection_item(dirname, name);
-	if (image != NULL) {
-	    gtk_box_pack_start(GTK_BOX(hbox), image, FALSE, FALSE, 0);
-	    gtk_widget_show(image);
+	GtkWidget *item = create_image_selection_item(dirname, name);
+	if (item != NULL) {
+	    gtk_box_pack_start(GTK_BOX(hbox), item, FALSE, FALSE, 0);
+	    gtk_widget_show(item);
 	}
     }
     g_dir_close(dir);
@@ -430,6 +455,7 @@ int main(int argc, char **argv)
     gtk_container_add(GTK_CONTAINER(win), layout);
     
     labelbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_set_name(labelbox, "labelbox");
     gtk_widget_show(labelbox);
     gtk_layout_put(GTK_LAYOUT(layout), labelbox, 0, 0);
     
@@ -455,7 +481,7 @@ int main(int argc, char **argv)
     gtk_widget_show(img);
     gtk_layout_put(GTK_LAYOUT(layout), img, 0, 0);
     
-    image_selection_view = create_image_selection_view("/home/masm");
+    image_selection_view = create_image_selection_view("/home/pic");
     if (image_selection_view != NULL)
 	gtk_layout_put(GTK_LAYOUT(layout), image_selection_view, 0, 0);
     
