@@ -47,6 +47,9 @@ static const char css_text[] =
 	" padding: 5px;"
 	" background-color: rgba(0,0,0,0.7);"
 	"}"
+	"box#image-selection box:prelight {"
+	" background-color: rgba(0,128,255,0.7);"
+	"}"
 	"box#image-selection label {"
 	" font-size: x-small;"
 	" color: #ffffff;"
@@ -214,12 +217,17 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
 {
     printf("key_press:\n");
     
-    switch (event->keyval) {
-    case GDK_KEY_Q:
-    case GDK_KEY_q:
+    if (event->keyval == GDK_KEY_Q || event->keyval == GDK_KEY_q) {
 	gtk_main_quit();
-	break;
-	
+	return TRUE;
+    }
+    
+    if (gtk_widget_get_mapped(image_selection_view)) {
+	image_selection_view_key_event(image_selection_view, event);
+	return TRUE;
+    }
+    
+    switch (event->keyval) {
     case GDK_KEY_F:
     case GDK_KEY_f:
 	is_fullscreen = !is_fullscreen;
@@ -299,10 +307,28 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
     case GDK_KEY_Escape:
 	mode = MODE_NONE;
 	break;
+	
+    case GDK_KEY_v:
+    case GDK_KEY_V:
+	gtk_widget_show(image_selection_view);
+	break;
     }
     
     relayout();
     
+    return TRUE;
+}
+
+gboolean miv_display(const gchar *path)
+{
+    GdkPixbuf *pb;
+    GError *err = NULL;
+    pb = gdk_pixbuf_new_from_file(path, &err);
+    if (err != NULL)
+	return FALSE;
+    
+    pixbuf = pb;
+    relayout();
     return TRUE;
 }
 
