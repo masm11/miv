@@ -134,6 +134,8 @@ static void relayout(void)
     }
     g_object_unref(pb_old);
     
+    double scale_ratio = 1.0;
+    
     pb_old = pb;
     if (maximize && is_fullscreen) {
 	set_status_string(STATUS_MAXIMIZE, g_strdup("maximize"));
@@ -145,27 +147,25 @@ static void relayout(void)
 	int lw = alloc.width, lh = alloc.height;	// size of layout widget.
 	double wscale = (double) lw / w;
 	double hscale = (double) lh / h;
-	double scale = fmin(wscale, hscale);
-	pb = gdk_pixbuf_scale_simple(pb_old, w * scale, h * scale, GDK_INTERP_BILINEAR);
-    } else {
+	scale_ratio = fmin(wscale, hscale);
+    } else
 	set_status_string(STATUS_MAXIMIZE, NULL);
-	pb = gdk_pixbuf_copy(pb_old);
-    }
-    g_object_unref(pb_old);
     
-    pb_old = pb;
     if (scale != 0) {
 	set_status_string(STATUS_SCALE, g_strdup_printf("scale %+d", scale));
+	double ratio = pow(1.25, scale);
+	scale_ratio *= ratio;
+    } else
+	set_status_string(STATUS_SCALE, NULL);
+    
+    if (scale_ratio != 1.0) {
 	int width = gdk_pixbuf_get_width(pb_old);
 	int height = gdk_pixbuf_get_height(pb_old);
-	double ratio = pow(1.25, scale);
-	width *= ratio;
-	height *= ratio;
-	pb = gdk_pixbuf_scale_simple(pb_old, width, height, GDK_INTERP_BILINEAR);
+	pb = gdk_pixbuf_scale_simple(pb_old, width * scale_ratio, height * scale_ratio, GDK_INTERP_BILINEAR);
     } else {
-	set_status_string(STATUS_SCALE, NULL);
 	pb = gdk_pixbuf_copy(pb_old);
     }
+    
     g_object_unref(pb_old);
     
     gtk_image_set_from_pixbuf(GTK_IMAGE(img), pb);
