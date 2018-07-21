@@ -25,6 +25,8 @@ struct _MivLayout
 struct _MivLayoutClass
 {
   GtkContainerClass parent_class;
+
+  void (*translation_changed)(MivLayout *layout, gpointer data);
 };
 
 
@@ -47,5 +49,9 @@ void           miv_layout_set_image_position (MivLayout     *layout,
 
 void           miv_layout_set_fullscreen_mode (MivLayout    *layout,
                                                gboolean is_fullscreen);
+
+void           miv_layout_translate_image     (MivLayout *layout,
+                                               int dx,
+                                               int dy);
 
 #endif	/* ifndef MIVLAYOUT_H__INCLUDED */

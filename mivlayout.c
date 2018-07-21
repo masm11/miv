@@ -10,6 +10,11 @@ enum {
     NR_CHILDREN
 };
 
+enum {
+    TRANSLATION_CHANGED,
+    LAST_SIGNAL
+};
+
 struct _MivLayoutPrivate
 {
     struct child_t {
@@ -17,7 +22,7 @@ struct _MivLayoutPrivate
 	GtkRequisition preferred;
 	GtkAllocation alloc;
     } children[NR_CHILDREN];
-    int image_x, image_y;
+    int image_tx, image_ty;
     gboolean is_fullscreen;
 };
 
@@ -46,6 +51,13 @@ static void miv_layout_allocate_child     (MivLayout      *layout,
 static void miv_layout_set_child          (MivLayout *layout,
                                            int type,
                                            GtkWidget *w);
+static void miv_layout_set_translate(
+	MivLayout *layout,
+	int tx,
+	int ty);
+static void miv_layout_translation_changed(MivLayout *layout, gpointer data);
+
+static guint signals[LAST_SIGNAL] = { 0, };
 
 G_DEFINE_TYPE_WITH_PRIVATE(MivLayout, miv_layout, GTK_TYPE_CONTAINER)
 
@@ -134,10 +146,10 @@ static void miv_layout_set_child(
     gtk_widget_set_parent(w, GTK_WIDGET(layout));
 }
 
-void miv_layout_set_image_position(
+void miv_layout_translate_image(
 	MivLayout *layout,
-	int x,
-	int y)
+	int dx,
+	int dy)
 {
     MivLayoutPrivate *priv;
     
@@ -145,8 +157,7 @@ void miv_layout_set_image_position(
     
     priv = layout->priv;
     
-    priv->image_x = x;
-    priv->image_y = y;
+    miv_layout_set_translate(layout, priv->image_tx + dx, priv->image_ty + dy);
     
     if (priv->children[CHILD_IMAGE].w != NULL) {
 	if (gtk_widget_get_visible(priv->children[CHILD_IMAGE].w) &&
@@ -195,6 +206,17 @@ static void miv_layout_class_init(MivLayoutClass *class)
   container_class->add = miv_layout_add;
   container_class->remove = miv_layout_remove;
   container_class->forall = miv_layout_forall;
+  
+  class->translation_changed = miv_layout_translation_changed;
+  
+  signals[TRANSLATION_CHANGED] =
+	  g_signal_new("translation-changed",
+		  G_OBJECT_CLASS_TYPE(gobject_class),
+		  G_SIGNAL_RUN_FIRST,
+		  G_STRUCT_OFFSET(MivLayoutClass, translation_changed),
+		  NULL, NULL,
+		  g_cclosure_marshal_VOID__POINTER,
+		  G_TYPE_NONE, 1, G_TYPE_POINTER);
 }
 
 static void miv_layout_init(MivLayout *layout)
@@ -315,8 +337,37 @@ static void miv_layout_size_allocate(
 	priv->children[i].alloc.height = priv->children[i].preferred.height;
     }
     
-    priv->children[CHILD_IMAGE].alloc.x = priv->image_x;
-    priv->children[CHILD_IMAGE].alloc.y = priv->image_y;
+    int lw = allocation->width, lh = allocation->height;
+    int x, y;	// where to place center of the image in layout widget.
+    int tx = priv->image_tx, ty = priv->image_ty;
+    int w = priv->children[CHILD_IMAGE].preferred.width;
+    int h = priv->children[CHILD_IMAGE].preferred.height;
+    
+    x = lw / 2;
+    y = lh / 2;
+    
+    if (w > lw) {
+	x += tx;
+	if (x - w / 2 > 0)
+	    x = w / 2;
+	if (x + w / 2 < lw)
+	    x = lw - w / 2;
+	tx = x - lw / 2;
+    } else
+	tx = 0;
+    if (h > lh) {
+	y += ty;
+	if (y - h / 2 > 0)
+	    y = h / 2;
+	if (y + h / 2 < lh)
+	    y = lh - h / 2;
+	ty = y - lh / 2;
+    } else
+	ty = 0;
+    
+    priv->children[CHILD_IMAGE].alloc.x = x - w / 2;
+    priv->children[CHILD_IMAGE].alloc.y = y - h / 2;
+    miv_layout_set_translate(layout, tx, ty);
     
     priv->children[CHILD_SEL].alloc.x = 0;
     priv->children[CHILD_SEL].alloc.y = allocation->height - priv->children[CHILD_SEL].preferred.height;
@@ -335,6 +386,27 @@ static void miv_layout_size_allocate(
     }
 }
 
+static void miv_layout_set_translate(
+	MivLayout *layout,
+	int tx,
+	int ty)
+{
+    MivLayoutPrivate *priv = layout->priv;
+    
+    if (priv->image_tx != tx || priv->image_ty != ty) {
+	priv->image_tx = tx;
+	priv->image_ty = ty;
+	GdkPoint ptr;
+	ptr.x = tx;
+	ptr.y = ty;
+	g_signal_emit(layout, signals[TRANSLATION_CHANGED], 0, &ptr);
+    }
+}
+
+static void miv_layout_translation_changed(MivLayout *layout, gpointer data)
+{
+}
+
 /* Container methods
  */
 static void miv_layout_add(
@@ -350,7 +422,7 @@ static void miv_layout_remove(
 {
     MivLayout *layout = MIV_LAYOUT(container);
     MivLayoutPrivate *priv = layout->priv;
-
+    
     for (int i = 0; i < NR_CHILDREN; i++) {
 	if (priv->children[i].w != NULL && priv->children[i].w == widget) {
 	    gtk_widget_unparent(widget);
@@ -381,6 +453,13 @@ static void miv_layout_allocate_child(
 	MivLayout      *layout,
 	struct child_t *child)
 {
-    if (child->w != NULL)
+    if (child->w != NULL) {
+	printf("%s %dx%d+%d+%d\n",
+		G_OBJECT_TYPE_NAME(child->w),
+		child->alloc.width,
+		child->alloc.height,
+		child->alloc.x,
+		child->alloc.y);
 	gtk_widget_size_allocate(child->w, &child->alloc);
+    }
 }

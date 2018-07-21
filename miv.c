@@ -9,6 +9,15 @@ enum {
     MODE_SCALE,
 };
 
+enum {
+    STATUS_TRANSLATE,
+    STATUS_SCALE,
+    STATUS_ROTATE,
+    STATUS_FULLSCREEN,
+    STATUS_MAXIMIZE,
+    NR_STATUS
+};
+
 #define MAX_STATUS_STRINGS	16
 
 static GtkCssProvider *css_provider;
@@ -17,8 +26,7 @@ static gboolean is_fullscreen = FALSE, is_fullscreened = FALSE;
 static GdkPixbuf *pixbuf;
 static GtkWidget *img;
 static GtkWidget *status = NULL, *mode_label;
-static gchar **status_strings = NULL;
-static int status_nr_string = 0;
+static gchar *status_strings[NR_STATUS] = { NULL, };
 static GtkWidget *labelbox = NULL;
 static GtkWidget *image_selection_view = NULL;
 static int mode = 0;
@@ -50,19 +58,6 @@ static const char css_text[] =
 
 static void relayout(void);
 
-static void layout_size_allocate(GtkWidget *widget, GtkAllocation *allocation, gpointer user_data)
-{
-    printf("layout_size_allocate: %dx%d+%d+%d\n",
-	    allocation->width, allocation->height, allocation->x, allocation->y);
-    relayout();
-}
-
-static void img_size_allocate(GtkWidget *widget, GtkAllocation *allocation, gpointer user_data)
-{
-    printf("img_size_allocate: %dx%d+%d+%d\n",
-	    allocation->width, allocation->height, allocation->x, allocation->y);
-}
-
 static void add_css_provider(GtkWidget *w)
 {
     GtkStyleContext *style_context;
@@ -70,27 +65,40 @@ static void add_css_provider(GtkWidget *w)
     gtk_style_context_add_provider(style_context, GTK_STYLE_PROVIDER(css_provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
 }
 
-static void init_status_string(void)
+static void set_status_string(int idx, gchar *str)
 {
-    if (status_strings != NULL)
-	g_strfreev(status_strings);
-    status_strings = g_new0(gchar *, MAX_STATUS_STRINGS);
-    status_strings[0] = NULL;
-    status_nr_string = 0;
+    assert((unsigned int) idx < NR_STATUS);
+    if (status_strings[idx] != NULL)
+	g_free(status_strings[idx]);
+    status_strings[idx] = str;
 }
 
-static void add_status_string(gchar *str)
+static gchar *make_status_string(void)
 {
-    assert(status_nr_string + 1 < MAX_STATUS_STRINGS);
-    status_strings[status_nr_string++] = str;
-    status_strings[status_nr_string] = NULL;
+    gchar *strv[NR_STATUS + 1];
+    int i, j;
+    for (i = j = 0; i < NR_STATUS; i++) {
+	if (status_strings[i] != NULL)
+	    strv[j++] = status_strings[i];
+    }
+    strv[j] = NULL;
+    return g_strjoinv(", ", strv);
+}
+
+static void update_status(void)
+{
+    gchar *s = make_status_string();
+    if (strlen(s) != 0) {
+	gtk_label_set_text(GTK_LABEL(status), s);
+	gtk_widget_show(status);
+    } else
+	gtk_widget_hide(status);
+    g_free(s);
 }
 
 static void relayout(void)
 {
     GdkPixbuf *pb = NULL, *pb_old;
-    
-    init_status_string();
     
     if (is_fullscreen) {
 	if (!is_fullscreened) {
@@ -109,18 +117,19 @@ static void relayout(void)
     pb_old = gdk_pixbuf_copy(pixbuf);
     switch (rotate) {
     case 0:
+	set_status_string(STATUS_ROTATE, NULL);
 	pb = gdk_pixbuf_rotate_simple(pb_old, GDK_PIXBUF_ROTATE_NONE);
 	break;
     case 90:
-	add_status_string(g_strdup("rotate 90"));
+	set_status_string(STATUS_ROTATE, g_strdup("rotate 90"));
 	pb = gdk_pixbuf_rotate_simple(pb_old, GDK_PIXBUF_ROTATE_CLOCKWISE);
 	break;
     case 180:
-	add_status_string(g_strdup("rotate 180"));
+	set_status_string(STATUS_ROTATE, g_strdup("rotate 180"));
 	pb = gdk_pixbuf_rotate_simple(pb_old, GDK_PIXBUF_ROTATE_UPSIDEDOWN);
 	break;
     case 270:
-	add_status_string(g_strdup("rotate 270"));
+	set_status_string(STATUS_ROTATE, g_strdup("rotate 270"));
 	pb = gdk_pixbuf_rotate_simple(pb_old, GDK_PIXBUF_ROTATE_COUNTERCLOCKWISE);
 	break;
     }
@@ -128,7 +137,7 @@ static void relayout(void)
     
     pb_old = pb;
     if (maximize && is_fullscreen) {
-	add_status_string(g_strdup("maximize"));
+	set_status_string(STATUS_MAXIMIZE, g_strdup("maximize"));
 	
 	int w = gdk_pixbuf_get_width(pb_old);
 	int h = gdk_pixbuf_get_height(pb_old);
@@ -140,28 +149,31 @@ static void relayout(void)
 	double scale = fmin(wscale, hscale);
 	pb = gdk_pixbuf_scale_simple(pb_old, w * scale, h * scale, GDK_INTERP_BILINEAR);
     } else {
+	set_status_string(STATUS_MAXIMIZE, NULL);
 	pb = gdk_pixbuf_copy(pb_old);
     }
     g_object_unref(pb_old);
     
     pb_old = pb;
     if (scale != 0) {
-	add_status_string(g_strdup_printf("scale %+d", scale));
+	set_status_string(STATUS_SCALE, g_strdup_printf("scale %+d", scale));
 	int width = gdk_pixbuf_get_width(pb_old);
 	int height = gdk_pixbuf_get_height(pb_old);
 	double ratio = pow(1.25, scale);
 	width *= ratio;
 	height *= ratio;
 	pb = gdk_pixbuf_scale_simple(pb_old, width, height, GDK_INTERP_BILINEAR);
-    } else
+    } else {
+	set_status_string(STATUS_SCALE, NULL);
 	pb = gdk_pixbuf_copy(pb_old);
+    }
     g_object_unref(pb_old);
     
     gtk_image_set_from_pixbuf(GTK_IMAGE(img), pb);
     gtk_widget_get_preferred_size(img, NULL, NULL);		// hack!
     
     if (is_fullscreen) {
-	add_status_string(g_strdup("fullscreen"));
+	set_status_string(STATUS_FULLSCREEN, g_strdup("fullscreen"));
 	
 	gtk_widget_set_size_request(layout, -1, -1);
 	
@@ -199,17 +211,19 @@ static void relayout(void)
 	} else
 	    ty = 0;
 	
+#if 0
 	if (tx != 0 || ty != 0)
 	    add_status_string(g_strdup_printf("translate %+d%+d ", tx, ty));
+#endif
 	
 	gtk_widget_get_allocation(img, &alloc);
 	printf("img: %dx%d+%d+%d\n", alloc.width, alloc.height, alloc.x, alloc.y);
-	miv_layout_set_image_position(MIV_LAYOUT(layout), x - w / 2, y - h / 2);
+	// miv_layout_set_image_position(MIV_LAYOUT(layout), x - w / 2, y - h / 2);
     } else {
 	int w = gdk_pixbuf_get_width(pb);
 	int h = gdk_pixbuf_get_height(pb);
 	gtk_widget_set_size_request(layout, w, h);
-	miv_layout_set_image_position(MIV_LAYOUT(layout), 0, 0);
+	set_status_string(STATUS_FULLSCREEN, NULL);
     }
     
     gtk_window_resize(GTK_WINDOW(win), 100, 100);
@@ -217,13 +231,7 @@ static void relayout(void)
     g_object_unref(pb);
     
     if (labelbox != NULL) {
-	gchar *s = g_strjoinv(", ", status_strings);
-	if (strlen(s) != 0) {
-	    gtk_label_set_text(GTK_LABEL(status), s);
-	    gtk_widget_show(status);
-	} else
-	    gtk_widget_hide(status);
-	g_free(s);
+	update_status();
 	
 	switch (mode) {
 	case MODE_NONE:
@@ -249,6 +257,16 @@ static void relayout(void)
 	g_object_unref(labelbox);
 #endif
     }
+}
+
+static void layout_translation_changed(GtkWidget *layout, gpointer data, gpointer user_data)
+{
+    GdkPoint *ptr = data;
+    printf("tx=%d, ty=%d.\n", ptr->x, ptr->y);
+    if (ptr->x != 0 || ptr->y != 0)
+	set_status_string(STATUS_TRANSLATE, g_strdup_printf("translate %+d%+d ", ptr->x, ptr->y));
+    else
+	set_status_string(STATUS_TRANSLATE, NULL);
 }
 
 static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer user_data)
@@ -284,7 +302,7 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
     case GDK_KEY_Left:
 	switch (mode) {
 	case MODE_NONE:
-	    tx += 128;
+	    miv_layout_translate_image(MIV_LAYOUT(layout), 128, 0);
 	    break;
 	case MODE_ROTATE:
 	    if ((rotate -= 90) < 0)
@@ -296,7 +314,7 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
     case GDK_KEY_Right:
 	switch (mode) {
 	case MODE_NONE:
-	    tx -= 128;
+	    miv_layout_translate_image(MIV_LAYOUT(layout), -128, 0);
 	    break;
 	case MODE_ROTATE:
 	    if ((rotate += 90) >= 360)
@@ -308,7 +326,7 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
     case GDK_KEY_Up:
 	switch (mode) {
 	case MODE_NONE:
-	    ty += 128;
+	    miv_layout_translate_image(MIV_LAYOUT(layout), 0, 128);
 	    break;
 	case MODE_SCALE:
 	    if ((scale -= 1) <= -5)
@@ -320,7 +338,7 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
     case GDK_KEY_Down:
 	switch (mode) {
 	case MODE_NONE:
-	    ty -= 128;
+	    miv_layout_translate_image(MIV_LAYOUT(layout), 0, -128);
 	    break;
 	case MODE_SCALE:
 	    if ((scale += 1) >= 5)
@@ -456,6 +474,7 @@ int main(int argc, char **argv)
     g_signal_connect(G_OBJECT(win), "key-press-event", G_CALLBACK(key_press_event), NULL);
     
     layout = miv_layout_new();
+    g_signal_connect(G_OBJECT(layout), "translation-changed", G_CALLBACK(layout_translation_changed), NULL);
     gtk_widget_show(layout);
     gtk_container_add(GTK_CONTAINER(win), layout);
     
@@ -479,8 +498,6 @@ int main(int argc, char **argv)
     gtk_box_pack_start(GTK_BOX(hbox), mode_label, FALSE, FALSE, 0);
     
     pixbuf = gdk_pixbuf_new_from_file(argv[1], NULL);
-    int w = gdk_pixbuf_get_width(pixbuf);
-    int h = gdk_pixbuf_get_height(pixbuf);
     
     img = gtk_image_new_from_pixbuf(pixbuf);
     gtk_widget_show(img);
