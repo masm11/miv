@@ -315,6 +315,14 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
     case GDK_KEY_V:
 	gtk_widget_show(image_selection_view);
 	break;
+	
+    case GDK_KEY_space:
+	image_selection_view_display_next(image_selection_view);
+	break;
+	
+    case GDK_KEY_BackSpace:
+	image_selection_view_display_prev(image_selection_view);
+	break;
     }
     
     relayout();

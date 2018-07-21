@@ -182,6 +182,16 @@ static void enter_it(GtkWidget *view)
     }
 }
 
+void image_selection_view_display_next(GtkWidget *widget)
+{
+    display_next(widget);
+}
+
+void image_selection_view_display_prev(GtkWidget *widget)
+{
+    display_prev(widget);
+}
+
 void image_selection_view_key_event(GtkWidget *widget, GdkEventKey *event)
 {
     assert(GTK_IS_BOX(widget));
