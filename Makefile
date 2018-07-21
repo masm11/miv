@@ -1,5 +1,7 @@
-miv: miv.o mivlayout.o
-	cc -o miv miv.o mivlayout.o `pkg-config --libs gtk+-3.0` -lm
+OBJS = miv.o mivlayout.o
+
+miv: $(OBJS)
+	cc -o miv $(OBJS) `pkg-config --libs gtk+-3.0` -lm
 
 %.o: %.c
-	cc -c -o $*.o `pkg-config --cflags gtk+-3.0` $*.c
+	cc -Wall -c -o $*.o `pkg-config --cflags gtk+-3.0` $*.c

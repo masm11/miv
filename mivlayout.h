@@ -27,21 +27,25 @@ struct _MivLayoutClass
   GtkContainerClass parent_class;
 };
 
-GDK_AVAILABLE_IN_ALL
-GType          miv_layout_get_type        (void) G_GNUC_CONST;
-GDK_AVAILABLE_IN_ALL
-GtkWidget*     miv_layout_new             (void);
 
-GDK_AVAILABLE_IN_ALL
-void           miv_layout_put             (MivLayout     *layout,
-		                           GtkWidget     *child_widget,
-		                           gint           x,
-		                           gint           y);
+GType          miv_layout_get_type          (void) G_GNUC_CONST;
 
-GDK_AVAILABLE_IN_ALL
-void           miv_layout_move            (MivLayout     *layout,
-		                           GtkWidget     *child_widget,
-		                           gint           x,
-		                           gint           y);
+GtkWidget*     miv_layout_new               (void);
+
+void           miv_layout_set_image         (MivLayout     *layout,
+                                             GtkWidget     *child_widget);
+
+void           miv_layout_set_selection_view(MivLayout     *layout,
+                                             GtkWidget     *child_widget);
+
+void           miv_layout_set_labels        (MivLayout     *layout,
+                                             GtkWidget     *child_widget);
+
+void           miv_layout_set_image_position (MivLayout     *layout,
+                                              int           x,
+                                              int           y);
+
+void           miv_layout_set_fullscreen_mode (MivLayout    *layout,
+                                               gboolean is_fullscreen);
 
 #endif	/* ifndef MIVLAYOUT_H__INCLUDED */

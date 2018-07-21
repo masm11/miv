@@ -95,11 +95,13 @@ static void relayout(void)
     if (is_fullscreen) {
 	if (!is_fullscreened) {
 	    gtk_window_fullscreen(GTK_WINDOW(win));
+	    miv_layout_set_fullscreen_mode(MIV_LAYOUT(layout), TRUE);
 	    is_fullscreened = TRUE;
 	}
     } else {
 	if (is_fullscreened) {
 	    gtk_window_unfullscreen(GTK_WINDOW(win));
+	    miv_layout_set_fullscreen_mode(MIV_LAYOUT(layout), FALSE);
 	    is_fullscreened = FALSE;
 	}
     }
@@ -202,16 +204,12 @@ static void relayout(void)
 	
 	gtk_widget_get_allocation(img, &alloc);
 	printf("img: %dx%d+%d+%d\n", alloc.width, alloc.height, alloc.x, alloc.y);
-#if 0
-	gtk_layout_move(GTK_LAYOUT(layout), img, x - w / 2, y - h / 2);
-#endif
+	miv_layout_set_image_position(MIV_LAYOUT(layout), x - w / 2, y - h / 2);
     } else {
 	int w = gdk_pixbuf_get_width(pb);
 	int h = gdk_pixbuf_get_height(pb);
 	gtk_widget_set_size_request(layout, w, h);
-#if 0
-	gtk_layout_move(GTK_LAYOUT(layout), img, 0, 0);
-#endif
+	miv_layout_set_image_position(MIV_LAYOUT(layout), 0, 0);
     }
     
     gtk_window_resize(GTK_WINDOW(win), 100, 100);
@@ -251,21 +249,6 @@ static void relayout(void)
 	g_object_unref(labelbox);
 #endif
     }
-    
-#if 0
-    {
-	GtkAllocation alloc1, alloc2;
-	int x, y, w, h;
-	gtk_widget_get_allocation(layout, &alloc1);
-	gtk_widget_get_allocation(image_selection_view, &alloc2);
-	x = 0;
-	y = alloc1.height - alloc2.height;
-	w = alloc1.width;
-	h = alloc2.height;
-	gtk_widget_set_size_request(image_selection_view, w, -1);
-	gtk_layout_move(GTK_LAYOUT(layout), image_selection_view, x, y);
-    }
-#endif
 }
 
 static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer user_data)
