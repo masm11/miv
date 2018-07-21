@@ -9,19 +9,34 @@ gboolean miv_display(const gchar *path);
 
 static void move_to_dir(const gchar *dirname);
 
+static GtkWidget *viewport = NULL;
 static GtkWidget *hbox = NULL;
 static GtkWidget *curpath = NULL;
 
 G_DEFINE_QUARK(miv-selection-fullpath, miv_selection_fullpath)
 
-static void hover_one(GtkWidget *from, GtkWidget *to)
+static void hover_one(GtkWidget *from, GtkWidget *to, int pos)
 {
     if (from != NULL)
 	gtk_widget_unset_state_flags(from, GTK_STATE_FLAG_PRELIGHT);
     if (to != NULL) {
 	gtk_widget_set_state_flags(to, GTK_STATE_FLAG_PRELIGHT, FALSE);
+	
 	gchar *fullpath = g_object_get_qdata(G_OBJECT(to), miv_selection_fullpath_quark());
 	gtk_label_set_text(GTK_LABEL(curpath), fullpath);
+	
+	GtkAllocation alloc;
+	gtk_widget_get_allocation(to, &alloc);
+	double x1 = alloc.x, x2 = alloc.x + alloc.width;
+	
+	GtkAdjustment *adj = gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(viewport));
+	double val = gtk_adjustment_get_value(adj);
+	double psize = gtk_adjustment_get_page_size(adj);
+	if (x1 < val)
+	    val = x1;
+	if (x2 >= val + psize)
+	    val = x2 - psize;
+	gtk_adjustment_set_value(adj, val);
     }
 }
 
@@ -36,27 +51,44 @@ static void select_one(GtkWidget *from, GtkWidget *to)
 struct find_selected_t {
     GtkWidget *prev, *cur, *next;
     GtkWidget *sel;
+    int prev_pos, cur_pos, next_pos;
+    int sel_pos;
+    
+    int pos;
 };
 
 static void find_selected_iter(GtkWidget *w, gpointer user_data)
 {
     struct find_selected_t *sel = user_data;
+    
     if (sel->cur == NULL) {
-	if (!(gtk_widget_get_state_flags(w) & GTK_STATE_FLAG_PRELIGHT))
+	if (!(gtk_widget_get_state_flags(w) & GTK_STATE_FLAG_PRELIGHT)) {
 	    sel->prev = w;
-	else
+	    sel->prev_pos = sel->pos;
+	} else {
 	    sel->cur = w;
+	    sel->cur_pos = sel->pos;
+	}
     } else {
-	if (sel->next == NULL)
+	if (sel->next == NULL) {
 	    sel->next = w;
+	    sel->next_pos = sel->pos;
+	}
     }
-    if ((gtk_widget_get_state_flags(w) & GTK_STATE_FLAG_SELECTED))
+    
+    if ((gtk_widget_get_state_flags(w) & GTK_STATE_FLAG_SELECTED)) {
 	sel->sel = w;
+	sel->sel_pos = sel->pos;
+    }
+    
+    sel->pos++;
 }
 
 static void find_selected(struct find_selected_t *sel)
 {
     sel->prev = sel->cur = sel->next = sel->sel = NULL;
+    sel->prev_pos = sel->cur_pos = sel->next_pos = sel->sel_pos = -1;
+    sel->pos = 0;
     gtk_container_foreach(GTK_CONTAINER(hbox), find_selected_iter, sel);
 }
 
@@ -65,7 +97,7 @@ static void select_next(GtkWidget *view)
     struct find_selected_t sel;
     find_selected(&sel);
     if (sel.cur != NULL && sel.next != NULL)
-	hover_one(sel.cur, sel.next);
+	hover_one(sel.cur, sel.next, sel.next_pos);
 }
 
 static void select_prev(GtkWidget *view)
@@ -73,7 +105,7 @@ static void select_prev(GtkWidget *view)
     struct find_selected_t sel;
     find_selected(&sel);
     if (sel.cur != NULL && sel.prev != NULL)
-	hover_one(sel.cur, sel.prev);
+	hover_one(sel.cur, sel.prev, sel.prev_pos);
 }
 
 static void display_next(GtkWidget *view)
@@ -93,7 +125,7 @@ static void display_next(GtkWidget *view)
     }
     
     if (sel.cur != NULL && sel.next != NULL) {
-	hover_one(sel.cur, sel.next);
+	hover_one(sel.cur, sel.next, sel.next_pos);
 	
 	gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.next), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
@@ -122,7 +154,7 @@ static void display_prev(GtkWidget *view)
     }
     
     if (sel.cur != NULL && sel.prev != NULL) {
-	hover_one(sel.cur, sel.prev);
+	hover_one(sel.cur, sel.prev, sel.prev_pos);
 	
 	gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.prev), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
@@ -245,10 +277,23 @@ static GtkWidget *create_image_selection_item(const char *dir, const char *name)
 
 #undef SIZE
 
+static void viewport_size_allocate(GtkWidget *w, GtkAllocation *alloc, gpointer user_data)
+{
+    GtkAdjustment *adj = gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(viewport));
+    gtk_adjustment_set_page_size(adj, alloc->width);
+}
+
+static void hbox_size_allocate(GtkWidget *w, GtkAllocation *alloc, gpointer user_data)
+{
+    GtkAdjustment *adj = gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(viewport));
+    gtk_adjustment_set_upper(adj, alloc->width);
+}
+
 struct add_item_t {
     const gchar *dirname;
     GtkBox *hbox;
     GtkWidget *first_item;
+    int nr;
 };
 
 static void add_items(gpointer data, gpointer user_data)
@@ -265,6 +310,7 @@ static void add_items(gpointer data, gpointer user_data)
 	gtk_widget_show(item);
 	if (p->first_item == NULL)
 	    p->first_item = item;
+	p->nr++;
     }
 }
 
@@ -318,12 +364,13 @@ static void move_to_dir(const gchar *path)
     param.dirname = dirname;
     param.hbox = GTK_BOX(hbox);
     param.first_item = NULL;
+    param.nr = 0;
     g_ptr_array_foreach(ary, add_items, &param);
     
     g_ptr_array_free(ary, TRUE);
     
     if (param.first_item != NULL)
-	hover_one(NULL, param.first_item);
+	hover_one(NULL, param.first_item, 0);
 }
 
 GtkWidget *image_selection_view_create(const gchar *dirname)
@@ -336,8 +383,15 @@ GtkWidget *image_selection_view_create(const gchar *dirname)
     gtk_box_pack_start(GTK_BOX(vbox), padding, TRUE, TRUE, 0);
     gtk_widget_show(padding);
     
+    viewport = gtk_scrolled_window_new(NULL, NULL);
+    g_signal_connect(G_OBJECT(viewport), "size-allocate", G_CALLBACK(viewport_size_allocate), NULL);
+    gtk_box_pack_end(GTK_BOX(vbox), viewport, FALSE, FALSE, 0);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(viewport), GTK_POLICY_AUTOMATIC, GTK_POLICY_NEVER);
+    gtk_widget_show(viewport);
+    
     hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-    gtk_box_pack_end(GTK_BOX(vbox), hbox, FALSE, FALSE, 0);
+    g_signal_connect(G_OBJECT(hbox), "size-allocate", G_CALLBACK(hbox_size_allocate), NULL);
+    gtk_container_add(GTK_CONTAINER(viewport), hbox);
     gtk_widget_show(hbox);
     
     curpath = gtk_label_new("");
