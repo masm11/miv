@@ -6,6 +6,7 @@
 
 enum {
     MODE_NONE,
+    MODE_TRANSLATE,
     MODE_ROTATE,
     MODE_SCALE,
 };
@@ -193,17 +194,11 @@ static void relayout(void)
 	    gtk_label_set_text(GTK_LABEL(mode_label), "scaling");
 	    gtk_widget_show(mode_label);
 	    break;
+	case MODE_TRANSLATE:
+	    gtk_label_set_text(GTK_LABEL(mode_label), "translating");
+	    gtk_widget_show(mode_label);
+	    break;
 	}
-	
-#if 0
-	/* In order to paint labels at the last,
-	 * remove and re-put labelbox.
-	 */
-	g_object_ref(labelbox);
-	gtk_container_remove(GTK_CONTAINER(layout), labelbox);
-	gtk_layout_put(GTK_LAYOUT(layout), labelbox, 0, 0);
-	g_object_unref(labelbox);
-#endif
     }
 }
 
@@ -225,10 +220,12 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
 	return TRUE;
     }
     
+#if 0
     if (gtk_widget_get_mapped(image_selection_view)) {
 	image_selection_view_key_event(image_selection_view, event);
 	return TRUE;
     }
+#endif
     
     switch (event->keyval) {
     case GDK_KEY_F:
@@ -251,9 +248,24 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
 	mode = MODE_SCALE;
 	break;
 	
+    case GDK_KEY_T:
+    case GDK_KEY_t:
+	mode = MODE_TRANSLATE;
+	break;
+	
+    case GDK_KEY_Escape:
+	mode = MODE_NONE;
+	break;
+	
     case GDK_KEY_Left:
 	switch (mode) {
 	case MODE_NONE:
+	    if (gtk_widget_get_mapped(image_selection_view)) {
+		image_selection_view_key_event(image_selection_view, event);
+		break;
+	    }
+	    /* fall through */
+	case MODE_TRANSLATE:
 	    miv_layout_translate_image(MIV_LAYOUT(layout), 128, 0);
 	    break;
 	case MODE_ROTATE:
@@ -266,6 +278,12 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
     case GDK_KEY_Right:
 	switch (mode) {
 	case MODE_NONE:
+	    if (gtk_widget_get_mapped(image_selection_view)) {
+		image_selection_view_key_event(image_selection_view, event);
+		break;
+	    }
+	    /* fall through */
+	case MODE_TRANSLATE:
 	    miv_layout_translate_image(MIV_LAYOUT(layout), -128, 0);
 	    break;
 	case MODE_ROTATE:
@@ -278,11 +296,12 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
     case GDK_KEY_Up:
 	switch (mode) {
 	case MODE_NONE:
+	case MODE_TRANSLATE:
 	    miv_layout_translate_image(MIV_LAYOUT(layout), 0, 128);
 	    break;
 	case MODE_SCALE:
-	    if ((scale -= 1) <= -5)
-		scale = -5;
+	    if ((scale += 1) >= 5)
+		scale = 5;
 	    break;
 	}
 	break;
@@ -290,11 +309,12 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
     case GDK_KEY_Down:
 	switch (mode) {
 	case MODE_NONE:
+	case MODE_TRANSLATE:
 	    miv_layout_translate_image(MIV_LAYOUT(layout), 0, -128);
 	    break;
 	case MODE_SCALE:
-	    if ((scale += 1) >= 5)
-		scale = 5;
+	    if ((scale -= 1) <= -5)
+		scale = -5;
 	    break;
 	}
 	break;
@@ -307,21 +327,29 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
 	miv_layout_reset_translation(MIV_LAYOUT(layout));
 	break;
 	
-    case GDK_KEY_Escape:
+    case GDK_KEY_v:
+    case GDK_KEY_V:
+	if (gtk_widget_get_mapped(image_selection_view))
+	    image_selection_view_key_event(image_selection_view, event);
+	else
+	    gtk_widget_show(image_selection_view);
 	mode = MODE_NONE;
 	break;
 	
-    case GDK_KEY_v:
-    case GDK_KEY_V:
-	gtk_widget_show(image_selection_view);
+    case GDK_KEY_Return:
+	if (mode == MODE_NONE) {
+	    if (gtk_widget_get_mapped(image_selection_view))
+		image_selection_view_key_event(image_selection_view, event);
+	} else
+	    mode = MODE_NONE;
 	break;
 	
     case GDK_KEY_space:
-	image_selection_view_display_next(image_selection_view);
+	image_selection_view_key_event(image_selection_view, event);
 	break;
 	
     case GDK_KEY_BackSpace:
-	image_selection_view_display_prev(image_selection_view);
+	image_selection_view_key_event(image_selection_view, event);
 	break;
     }
     
