@@ -1,6 +1,7 @@
 #include <gtk/gtk.h>
 #include <math.h>
 #include <assert.h>
+#include "mivlayout.h"
 
 enum {
     MODE_NONE,
@@ -201,12 +202,16 @@ static void relayout(void)
 	
 	gtk_widget_get_allocation(img, &alloc);
 	printf("img: %dx%d+%d+%d\n", alloc.width, alloc.height, alloc.x, alloc.y);
+#if 0
 	gtk_layout_move(GTK_LAYOUT(layout), img, x - w / 2, y - h / 2);
+#endif
     } else {
 	int w = gdk_pixbuf_get_width(pb);
 	int h = gdk_pixbuf_get_height(pb);
 	gtk_widget_set_size_request(layout, w, h);
+#if 0
 	gtk_layout_move(GTK_LAYOUT(layout), img, 0, 0);
+#endif
     }
     
     gtk_window_resize(GTK_WINDOW(win), 100, 100);
@@ -236,6 +241,7 @@ static void relayout(void)
 	    break;
 	}
 	
+#if 0
 	/* In order to paint labels at the last,
 	 * remove and re-put labelbox.
 	 */
@@ -243,8 +249,10 @@ static void relayout(void)
 	gtk_container_remove(GTK_CONTAINER(layout), labelbox);
 	gtk_layout_put(GTK_LAYOUT(layout), labelbox, 0, 0);
 	g_object_unref(labelbox);
+#endif
     }
     
+#if 0
     {
 	GtkAllocation alloc1, alloc2;
 	int x, y, w, h;
@@ -257,6 +265,7 @@ static void relayout(void)
 	gtk_widget_set_size_request(image_selection_view, w, -1);
 	gtk_layout_move(GTK_LAYOUT(layout), image_selection_view, x, y);
     }
+#endif
 }
 
 static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer user_data)
@@ -463,15 +472,14 @@ int main(int argc, char **argv)
     gtk_widget_show(win);
     g_signal_connect(G_OBJECT(win), "key-press-event", G_CALLBACK(key_press_event), NULL);
     
-    layout = gtk_layout_new(NULL, NULL);
-    g_signal_connect_after(G_OBJECT(layout), "size-allocate", G_CALLBACK(layout_size_allocate), NULL);
+    layout = miv_layout_new();
     gtk_widget_show(layout);
     gtk_container_add(GTK_CONTAINER(win), layout);
     
     labelbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_widget_set_name(labelbox, "labelbox");
     gtk_widget_show(labelbox);
-    gtk_layout_put(GTK_LAYOUT(layout), labelbox, 0, 0);
+    miv_layout_set_labels(MIV_LAYOUT(layout), labelbox);
     
     status = gtk_label_new("");
     add_css_provider(status);
@@ -493,11 +501,11 @@ int main(int argc, char **argv)
     
     img = gtk_image_new_from_pixbuf(pixbuf);
     gtk_widget_show(img);
-    gtk_layout_put(GTK_LAYOUT(layout), img, 0, 0);
+    miv_layout_set_image(MIV_LAYOUT(layout), img);
     
-    image_selection_view = create_image_selection_view("/home/pic");
+    image_selection_view = create_image_selection_view("/home/masm");
     if (image_selection_view != NULL)
-	gtk_layout_put(GTK_LAYOUT(layout), image_selection_view, 0, 0);
+	miv_layout_set_selection_view(MIV_LAYOUT(layout), image_selection_view);
     
     gtk_main();
     

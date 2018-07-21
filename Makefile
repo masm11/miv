@@ -1,5 +1,5 @@
-miv: miv.o
-	cc -o miv miv.o `pkg-config --libs gtk+-3.0` -lm
+miv: miv.o mivlayout.o
+	cc -o miv miv.o mivlayout.o `pkg-config --libs gtk+-3.0` -lm
 
-miv.o: miv.c
-	cc -c -o miv.o `pkg-config --cflags gtk+-3.0` miv.c
+%.o: %.c
+	cc -c -o $*.o `pkg-config --cflags gtk+-3.0` $*.c
