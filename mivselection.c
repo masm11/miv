@@ -1,5 +1,6 @@
 #include <gtk/gtk.h>
 #include <math.h>
+#include <assert.h>
 #include "mivselection.h"
 
 gboolean miv_display(const gchar *path);
@@ -7,8 +8,11 @@ gboolean miv_display(const gchar *path);
 static GtkWidget *hbox = NULL;
 static GtkWidget *curpath = NULL;
 
+G_DEFINE_QUARK(miv-selection-fullpath, miv_selection_fullpath)
+
 static void hover_one(GtkWidget *from, GtkWidget *to)
 {
+    printf("hover: %p -> %p\n", from, to);
     if (from != NULL)
 	gtk_widget_unset_state_flags(from, GTK_STATE_FLAG_PRELIGHT);
     if (to != NULL)
@@ -17,6 +21,7 @@ static void hover_one(GtkWidget *from, GtkWidget *to)
 
 static void select_one(GtkWidget *from, GtkWidget *to)
 {
+    printf("select: %p -> %p\n", from, to);
     if (from != NULL)
 	gtk_widget_unset_state_flags(from, GTK_STATE_FLAG_SELECTED);
     if (to != NULL)
@@ -46,7 +51,7 @@ static void find_selected_iter(GtkWidget *w, gpointer user_data)
 
 static void find_selected(struct find_selected_t *sel)
 {
-    sel->prev = sel->cur = sel->next = NULL;
+    sel->prev = sel->cur = sel->next = sel->sel = NULL;
     gtk_container_foreach(GTK_CONTAINER(hbox), find_selected_iter, sel);
 }
 
@@ -73,7 +78,7 @@ static void display_next(GtkWidget *view)
     find_selected(&sel);
     
     if (sel.cur != sel.sel) {
-	gchar *fullpath = g_object_get_data(G_OBJECT(sel.cur), "fullpath");
+	gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.cur), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
 	    if (miv_display(fullpath)) {
 		select_one(sel.sel, sel.cur);
@@ -85,10 +90,12 @@ static void display_next(GtkWidget *view)
     if (sel.cur != NULL && sel.next != NULL) {
 	hover_one(sel.cur, sel.next);
 	
-	gchar *fullpath = g_object_get_data(G_OBJECT(sel.next), "fullpath");
+	gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.next), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
-	    if (miv_display(fullpath))
+	    if (miv_display(fullpath)) {
+		select_one(sel.sel, sel.next);
 		return;
+	    }
 	}
     }
 }
@@ -100,7 +107,7 @@ static void display_prev(GtkWidget *view)
     find_selected(&sel);
     
     if (sel.cur != sel.sel) {
-	gchar *fullpath = g_object_get_data(G_OBJECT(sel.cur), "fullpath");
+	gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.cur), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
 	    if (miv_display(fullpath)) {
 		select_one(sel.sel, sel.cur);
@@ -112,16 +119,20 @@ static void display_prev(GtkWidget *view)
     if (sel.cur != NULL && sel.prev != NULL) {
 	hover_one(sel.cur, sel.prev);
 	
-	gchar *fullpath = g_object_get_data(G_OBJECT(sel.prev), "fullpath");
+	gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.prev), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
-	    if (miv_display(fullpath))
+	    if (miv_display(fullpath)) {
+		select_one(sel.sel, sel.prev);
 		return;
+	    }
 	}
     }
 }
 
 void image_selection_view_key_event(GtkWidget *widget, GdkEventKey *event)
 {
+    assert(GTK_IS_BOX(widget));
+    
     switch (event->keyval) {
     case GDK_KEY_v:
     case GDK_KEY_V:
@@ -160,7 +171,7 @@ static GtkWidget *create_image_selection_file(const char *dir, const char *name,
     GdkPixbuf *pb = gdk_pixbuf_scale_simple(pb_old, w, h, GDK_INTERP_NEAREST);
     
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-    g_object_set_data_full(G_OBJECT(vbox), "fullpath", fullpath, (GDestroyNotify) g_free);
+    g_object_set_qdata_full(G_OBJECT(vbox), miv_selection_fullpath_quark(), fullpath, (GDestroyNotify) g_free);
     
     GtkWidget *image = gtk_image_new_from_pixbuf(pb);
     gtk_widget_set_size_request(image, SIZE, SIZE);
@@ -178,7 +189,7 @@ static GtkWidget *create_image_selection_file(const char *dir, const char *name,
 static GtkWidget *create_image_selection_dir(const char *dir, const char *name, gchar *fullpath)
 {
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-    g_object_set_data_full(G_OBJECT(vbox), "fullpath", fullpath, (GDestroyNotify) g_free);
+    g_object_set_qdata_full(G_OBJECT(vbox), miv_selection_fullpath_quark(), fullpath, (GDestroyNotify) g_free);
     
     GtkWidget *image = gtk_image_new_from_icon_name("folder", GTK_ICON_SIZE_DND);
     gtk_widget_set_size_request(image, SIZE, SIZE);
@@ -270,7 +281,7 @@ static void move_to_dir(const gchar *dirname)
     if (param.first_item != NULL) {
 	hover_one(NULL, param.first_item);
 	
-	const gchar *fullpath = g_object_get_data(G_OBJECT(param.first_item), "fullpath");
+	const gchar *fullpath = g_object_get_qdata(G_OBJECT(param.first_item), miv_selection_fullpath_quark());
 	gtk_label_set_text(GTK_LABEL(curpath), fullpath);
     }
 }
