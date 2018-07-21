@@ -1,9 +1,13 @@
 #include <gtk/gtk.h>
 #include <math.h>
 #include <assert.h>
+#include <sys/fcntl.h>
+#include <unistd.h>
 #include "mivselection.h"
 
 gboolean miv_display(const gchar *path);
+
+static void move_to_dir(const gchar *dirname);
 
 static GtkWidget *hbox = NULL;
 static GtkWidget *curpath = NULL;
@@ -12,16 +16,17 @@ G_DEFINE_QUARK(miv-selection-fullpath, miv_selection_fullpath)
 
 static void hover_one(GtkWidget *from, GtkWidget *to)
 {
-    printf("hover: %p -> %p\n", from, to);
     if (from != NULL)
 	gtk_widget_unset_state_flags(from, GTK_STATE_FLAG_PRELIGHT);
-    if (to != NULL)
+    if (to != NULL) {
 	gtk_widget_set_state_flags(to, GTK_STATE_FLAG_PRELIGHT, FALSE);
+	gchar *fullpath = g_object_get_qdata(G_OBJECT(to), miv_selection_fullpath_quark());
+	gtk_label_set_text(GTK_LABEL(curpath), fullpath);
+    }
 }
 
 static void select_one(GtkWidget *from, GtkWidget *to)
 {
-    printf("select: %p -> %p\n", from, to);
     if (from != NULL)
 	gtk_widget_unset_state_flags(from, GTK_STATE_FLAG_SELECTED);
     if (to != NULL)
@@ -129,6 +134,22 @@ static void display_prev(GtkWidget *view)
     }
 }
 
+static void enter_it(GtkWidget *view)
+{
+    struct find_selected_t sel;
+    
+    find_selected(&sel);
+    
+    if (sel.cur != NULL) {
+	gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.cur), miv_selection_fullpath_quark());
+	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
+	    if (miv_display(fullpath))
+		select_one(sel.sel, sel.cur);
+	} else
+	    move_to_dir(fullpath);
+    }
+}
+
 void image_selection_view_key_event(GtkWidget *widget, GdkEventKey *event)
 {
     assert(GTK_IS_BOX(widget));
@@ -149,6 +170,9 @@ void image_selection_view_key_event(GtkWidget *widget, GdkEventKey *event)
 	break;
     case GDK_KEY_BackSpace:
 	display_prev(widget);
+	break;
+    case GDK_KEY_Return:
+	enter_it(widget);
 	break;
     }
 }
@@ -206,6 +230,7 @@ static GtkWidget *create_image_selection_item(const char *dir, const char *name)
     gchar *fullpath = g_strdup_printf("%s/%s", dir, name);
     GtkWidget *w;
     
+    printf("%s\n", fullpath);
     if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
 	w = create_image_selection_file(dir, name, fullpath);
     } else {
@@ -250,8 +275,25 @@ static int compare_names(gconstpointer a, gconstpointer b)
     return strcmp(*ap, *bp);
 }
 
-static void move_to_dir(const gchar *dirname)
+static void move_to_dir(const gchar *path)
 {
+    gchar *dirname = g_strdup(path);
+    
+    {
+	char buf[1024];
+	int fd = open(".", O_DIRECTORY | O_RDONLY);
+	if (fd != -1) {
+	    if (chdir(path) != -1) {
+		if (getcwd(buf, sizeof buf) != NULL) {
+		    g_free(dirname);
+		    dirname = g_strdup(buf);
+		}
+		fchdir(fd);
+	    }
+	    close(fd);
+	}
+    }
+    
     GPtrArray *ary = g_ptr_array_new_with_free_func(g_free);
     
     GError *err = NULL;
@@ -270,6 +312,8 @@ static void move_to_dir(const gchar *dirname)
     
     g_ptr_array_insert(ary, 0, g_strdup(".."));
     
+    gtk_container_foreach(GTK_CONTAINER(hbox), (GtkCallback) gtk_widget_destroy, NULL);
+    
     struct add_item_t param;
     param.dirname = dirname;
     param.hbox = GTK_BOX(hbox);
@@ -278,12 +322,8 @@ static void move_to_dir(const gchar *dirname)
     
     g_ptr_array_free(ary, TRUE);
     
-    if (param.first_item != NULL) {
+    if (param.first_item != NULL)
 	hover_one(NULL, param.first_item);
-	
-	const gchar *fullpath = g_object_get_qdata(G_OBJECT(param.first_item), miv_selection_fullpath_quark());
-	gtk_label_set_text(GTK_LABEL(curpath), fullpath);
-    }
 }
 
 GtkWidget *image_selection_view_create(const gchar *dirname)
