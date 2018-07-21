@@ -2,6 +2,7 @@
 #include <math.h>
 #include <assert.h>
 #include "mivlayout.h"
+#include "mivselection.h"
 
 enum {
     MODE_NONE,
@@ -20,7 +21,6 @@ enum {
 
 #define MAX_STATUS_STRINGS	16
 
-static GtkCssProvider *css_provider;
 static GtkWidget *win, *layout = NULL;
 static gboolean is_fullscreen = FALSE, is_fullscreened = FALSE;
 static GdkPixbuf *pixbuf;
@@ -56,13 +56,6 @@ static const char css_text[] =
 ;
 
 static void relayout(void);
-
-static void add_css_provider(GtkWidget *w)
-{
-    GtkStyleContext *style_context;
-    style_context = gtk_widget_get_style_context(w);
-    gtk_style_context_add_provider(style_context, GTK_STYLE_PROVIDER(css_provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-}
 
 static void set_status_string(int idx, gchar *str)
 {
@@ -313,92 +306,13 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
     return TRUE;
 }
 
-#define SIZE 100.0
-static GtkWidget *create_image_selection_item(const char *dir, const char *name)
+static void init_style(void)
 {
-    gchar *path = g_strdup_printf("%s/%s", dir, name);
-    GError *err = NULL;
-    GdkPixbuf *pb_old = gdk_pixbuf_new_from_file(path, &err);
-    if (err != NULL)
-	return NULL;
-    int orig_w = gdk_pixbuf_get_width(pb_old);
-    int orig_h = gdk_pixbuf_get_height(pb_old);
-    double scalew = SIZE / orig_w;
-    double scaleh = SIZE / orig_h;
-    double scale = fmin(scalew, scaleh);
-    int w = orig_w * scale;
-    int h = orig_h * scale;
-    GdkPixbuf *pb = gdk_pixbuf_scale_simple(pb_old, w, h, GDK_INTERP_NEAREST);
-    
-    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-    add_css_provider(vbox);
-    g_object_set_data_full(G_OBJECT(vbox), "fullpath", path, (GDestroyNotify) g_free);
-    
-    GtkWidget *image = gtk_image_new_from_pixbuf(pb);
-    add_css_provider(image);
-    gtk_widget_set_halign(image, GTK_ALIGN_CENTER);
-    gtk_widget_set_valign(image, GTK_ALIGN_END);
-    gtk_box_pack_start(GTK_BOX(vbox), image, TRUE, TRUE, 0);
-    gtk_widget_show(image);
-    
-    g_object_unref(pb_old);
-    g_object_unref(pb);
-    
-    return vbox;
-}
-#undef SIZE
-
-static GtkWidget *create_image_selection_view(const gchar *dirname)
-{
-    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-    gtk_widget_set_name(vbox, "image-selection");
-    add_css_provider(vbox);
-    gtk_widget_show(vbox);
-    
-    GtkWidget *padding = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-    gtk_box_pack_start(GTK_BOX(vbox), padding, TRUE, TRUE, 0);
-    gtk_widget_show(padding);
-    
-    GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-    gtk_box_pack_end(GTK_BOX(vbox), hbox, FALSE, FALSE, 0);
-    gtk_widget_show(hbox);
-    
-#if 0
-    {
-	GtkWidget *item = create_image_selection_item(dirname, "..");
-	if (item != NULL) {
-	    gtk_box_pack_start(GTK_BOX(hbox), item, FALSE, FALSE, 0);
-	    gtk_widget_show(item);
-	}
-    }
-#endif
-    
-    GError *err = NULL;
-    GDir *dir = g_dir_open(dirname, 0, &err);
-    if (err != NULL) {
-	gtk_widget_destroy(vbox);
-	return NULL;
-    }
-    while (TRUE) {
-	const gchar *name = g_dir_read_name(dir);
-	if (name == NULL)
-	    break;
-	
-	GtkWidget *item = create_image_selection_item(dirname, name);
-	if (item != NULL) {
-	    gtk_box_pack_start(GTK_BOX(hbox), item, FALSE, FALSE, 0);
-	    gtk_widget_show(item);
-	}
-    }
-    g_dir_close(dir);
-    
-    GtkWidget *curpath = gtk_label_new("foobar.txt");
-    add_css_provider(curpath);
-    gtk_label_set_xalign(GTK_LABEL(curpath), 0);
-    gtk_box_pack_start(GTK_BOX(vbox), curpath, FALSE, TRUE, 0);
-    gtk_widget_show(curpath);
-    
-    return vbox;
+    GdkScreen *scr = gdk_screen_get_default();
+    GtkCssProvider *css_provider = gtk_css_provider_new();
+    gtk_css_provider_load_from_data(css_provider, css_text, -1, NULL);
+    gtk_style_context_add_provider_for_screen(scr, GTK_STYLE_PROVIDER(css_provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    g_object_unref(css_provider);
 }
 
 int main(int argc, char **argv)
@@ -410,13 +324,12 @@ int main(int argc, char **argv)
 	exit(1);
     }
     
-    css_provider = gtk_css_provider_new();
-    gtk_css_provider_load_from_data(css_provider, css_text, -1, NULL);
+    init_style();
     
     win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    g_signal_connect(G_OBJECT(win), "key-press-event", G_CALLBACK(key_press_event), NULL);
     gtk_window_set_default_size(GTK_WINDOW(win), 100, 100);
     gtk_widget_show(win);
-    g_signal_connect(G_OBJECT(win), "key-press-event", G_CALLBACK(key_press_event), NULL);
     
     layout = miv_layout_new();
     g_signal_connect(G_OBJECT(layout), "translation-changed", G_CALLBACK(layout_translation_changed), NULL);
@@ -429,7 +342,6 @@ int main(int argc, char **argv)
     miv_layout_set_labels(MIV_LAYOUT(layout), labelbox);
     
     status = gtk_label_new("");
-    add_css_provider(status);
     gtk_widget_show(status);
     gtk_box_pack_start(GTK_BOX(labelbox), status, FALSE, FALSE, 0);
     
@@ -438,7 +350,6 @@ int main(int argc, char **argv)
     gtk_box_pack_start(GTK_BOX(labelbox), hbox, FALSE, FALSE, 0);
     
     mode_label = gtk_label_new("");
-    add_css_provider(mode_label);
     gtk_widget_show(mode_label);
     gtk_box_pack_start(GTK_BOX(hbox), mode_label, FALSE, FALSE, 0);
     
@@ -448,7 +359,7 @@ int main(int argc, char **argv)
     gtk_widget_show(img);
     miv_layout_set_image(MIV_LAYOUT(layout), img);
     
-    image_selection_view = create_image_selection_view("/home/masm");
+    image_selection_view = image_selection_view_create("/home/masm");
     if (image_selection_view != NULL)
 	miv_layout_set_selection_view(MIV_LAYOUT(layout), image_selection_view);
     
