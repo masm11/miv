@@ -54,4 +54,6 @@ void           miv_layout_translate_image     (MivLayout *layout,
                                                int dx,
                                                int dy);
 
+void           miv_layout_reset_translation   (MivLayout *layout);
+
 #endif	/* ifndef MIVLAYOUT_H__INCLUDED */

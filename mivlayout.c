@@ -51,6 +51,8 @@ static void miv_layout_allocate_child     (MivLayout      *layout,
 static void miv_layout_set_child          (MivLayout *layout,
                                            int type,
                                            GtkWidget *w);
+static void miv_layout_calc_image_position(MivLayout *layout,
+                                           const GtkAllocation *allocation);
 static void miv_layout_set_translate(
 	MivLayout *layout,
 	int tx,
@@ -158,6 +160,23 @@ void miv_layout_translate_image(
     priv = layout->priv;
     
     miv_layout_set_translate(layout, priv->image_tx + dx, priv->image_ty + dy);
+    
+    if (priv->children[CHILD_IMAGE].w != NULL) {
+	if (gtk_widget_get_visible(priv->children[CHILD_IMAGE].w) &&
+		gtk_widget_get_visible(GTK_WIDGET(layout)))
+	    gtk_widget_queue_resize(priv->children[CHILD_IMAGE].w);
+    }
+}
+
+void miv_layout_reset_translation(MivLayout *layout)
+{
+    MivLayoutPrivate *priv;
+    
+    g_return_if_fail(MIV_IS_LAYOUT(layout));
+    
+    priv = layout->priv;
+    
+    miv_layout_set_translate(layout, 0, 0);
     
     if (priv->children[CHILD_IMAGE].w != NULL) {
 	if (gtk_widget_get_visible(priv->children[CHILD_IMAGE].w) &&
@@ -337,6 +356,28 @@ static void miv_layout_size_allocate(
 	priv->children[i].alloc.height = priv->children[i].preferred.height;
     }
     
+    miv_layout_calc_image_position(layout, allocation);
+    
+    priv->children[CHILD_SEL].alloc.x = 0;
+    priv->children[CHILD_SEL].alloc.y = allocation->height - priv->children[CHILD_SEL].preferred.height;
+    priv->children[CHILD_SEL].alloc.width = allocation->width;
+    
+    priv->children[CHILD_LABELS].alloc.x = 0;
+    priv->children[CHILD_LABELS].alloc.y = 0;
+    
+    for (int i = 0; i < NR_CHILDREN; i++)
+	miv_layout_allocate_child(layout, &priv->children[i]);
+    
+    if (gtk_widget_get_realized(widget)) {
+	gdk_window_move_resize(gtk_widget_get_window(widget),
+		allocation->x, allocation->y,
+		allocation->width, allocation->height);
+    }
+}
+
+static void miv_layout_calc_image_position(MivLayout *layout, const GtkAllocation *allocation)
+{
+    MivLayoutPrivate *priv = layout->priv;
     int lw = allocation->width, lh = allocation->height;
     int x, y;	// where to place center of the image in layout widget.
     int tx = priv->image_tx, ty = priv->image_ty;
@@ -368,22 +409,6 @@ static void miv_layout_size_allocate(
     priv->children[CHILD_IMAGE].alloc.x = x - w / 2;
     priv->children[CHILD_IMAGE].alloc.y = y - h / 2;
     miv_layout_set_translate(layout, tx, ty);
-    
-    priv->children[CHILD_SEL].alloc.x = 0;
-    priv->children[CHILD_SEL].alloc.y = allocation->height - priv->children[CHILD_SEL].preferred.height;
-    priv->children[CHILD_SEL].alloc.width = allocation->width;
-    
-    priv->children[CHILD_LABELS].alloc.x = 0;
-    priv->children[CHILD_LABELS].alloc.y = 0;
-    
-    for (int i = 0; i < NR_CHILDREN; i++)
-	miv_layout_allocate_child(layout, &priv->children[i]);
-    
-    if (gtk_widget_get_realized(widget)) {
-	gdk_window_move_resize(gtk_widget_get_window(widget),
-		allocation->x, allocation->y,
-		allocation->width, allocation->height);
-    }
 }
 
 static void miv_layout_set_translate(

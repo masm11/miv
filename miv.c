@@ -32,7 +32,6 @@ static GtkWidget *image_selection_view = NULL;
 static int mode = 0;
 static int rotate = 0;	// 0, 90, 180, or 270
 static int scale = 0;
-static int tx = 0, ty = 0;
 static gboolean maximize = FALSE;
 
 static const char css_text[] =
@@ -170,56 +169,14 @@ static void relayout(void)
     g_object_unref(pb_old);
     
     gtk_image_set_from_pixbuf(GTK_IMAGE(img), pb);
-    gtk_widget_get_preferred_size(img, NULL, NULL);		// hack!
     
     if (is_fullscreen) {
 	set_status_string(STATUS_FULLSCREEN, g_strdup("fullscreen"));
 	
 	gtk_widget_set_size_request(layout, -1, -1);
-	
-	GtkAllocation alloc;
-	int w = gdk_pixbuf_get_width(pb);
-	int h = gdk_pixbuf_get_height(pb);
-	gtk_widget_get_allocation(layout, &alloc);
-	int lw = alloc.width, lh = alloc.height;	// size of layout widget.
-	
-	printf("----\n");
-	printf("layout: %dx%d+%d+%d\n", alloc.width, alloc.height, alloc.x, alloc.y);
-	gtk_widget_get_allocation(win, &alloc);
-	printf("window: %dx%d+%d+%d\n", alloc.width, alloc.height, alloc.x, alloc.y);
-	
-	int x, y;	// where to place center of the image in layout widget.
-	x = lw / 2;
-	y = lh / 2;
-	
-	if (w > lw) {
-	    x += tx;
-	    if (x - w / 2 > 0)
-		x = w / 2;
-	    if (x + w / 2 < lw)
-		x = lw - w / 2;
-	    tx = x - lw / 2;
-	} else
-	    tx = 0;
-	if (h > lh) {
-	    y += ty;
-	    if (y - h / 2 > 0)
-		y = h / 2;
-	    if (y + h / 2 < lh)
-		y = lh - h / 2;
-	    ty = y - lh / 2;
-	} else
-	    ty = 0;
-	
-#if 0
-	if (tx != 0 || ty != 0)
-	    add_status_string(g_strdup_printf("translate %+d%+d ", tx, ty));
-#endif
-	
-	gtk_widget_get_allocation(img, &alloc);
-	printf("img: %dx%d+%d+%d\n", alloc.width, alloc.height, alloc.x, alloc.y);
-	// miv_layout_set_image_position(MIV_LAYOUT(layout), x - w / 2, y - h / 2);
     } else {
+	set_status_string(STATUS_FULLSCREEN, NULL);
+	
 	int w = gdk_pixbuf_get_width(pb);
 	int h = gdk_pixbuf_get_height(pb);
 	gtk_widget_set_size_request(layout, w, h);
@@ -262,7 +219,6 @@ static void relayout(void)
 static void layout_translation_changed(GtkWidget *layout, gpointer data, gpointer user_data)
 {
     GdkPoint *ptr = data;
-    printf("tx=%d, ty=%d.\n", ptr->x, ptr->y);
     if (ptr->x != 0 || ptr->y != 0)
 	set_status_string(STATUS_TRANSLATE, g_strdup_printf("translate %+d%+d ", ptr->x, ptr->y));
     else
@@ -352,7 +308,7 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
 	break;
 	
     case GDK_KEY_0:
-	tx = ty = 0;
+	miv_layout_reset_translation(MIV_LAYOUT(layout));
 	break;
 	
     case GDK_KEY_Escape:
@@ -391,7 +347,6 @@ static GtkWidget *create_image_selection_item(const char *dir, const char *name)
     gtk_widget_set_halign(image, GTK_ALIGN_CENTER);
     gtk_widget_set_valign(image, GTK_ALIGN_END);
     gtk_widget_set_size_request(image, 100, 100);
-    gtk_widget_get_preferred_size(image, NULL, NULL);		// hack!
     gtk_box_pack_start(GTK_BOX(vbox), image, TRUE, TRUE, 0);
     gtk_widget_show(image);
     
@@ -449,7 +404,6 @@ static GtkWidget *create_image_selection_view(const gchar *dirname)
     GtkWidget *curpath = gtk_label_new("foobar.txt");
     add_css_provider(curpath);
     gtk_label_set_xalign(GTK_LABEL(curpath), 0);
-    gtk_widget_get_preferred_size(curpath, NULL, NULL);		// hack!
     gtk_box_pack_start(GTK_BOX(vbox), curpath, FALSE, TRUE, 0);
     gtk_widget_show(curpath);
     
