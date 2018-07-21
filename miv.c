@@ -170,18 +170,10 @@ static void relayout(void)
     
     gtk_image_set_from_pixbuf(GTK_IMAGE(img), pb);
     
-    if (is_fullscreen) {
+    if (is_fullscreen)
 	set_status_string(STATUS_FULLSCREEN, g_strdup("fullscreen"));
-	
-	gtk_widget_set_size_request(layout, -1, -1);
-    } else {
+    else
 	set_status_string(STATUS_FULLSCREEN, NULL);
-	
-	int w = gdk_pixbuf_get_width(pb);
-	int h = gdk_pixbuf_get_height(pb);
-	gtk_widget_set_size_request(layout, w, h);
-	set_status_string(STATUS_FULLSCREEN, NULL);
-    }
     
     gtk_window_resize(GTK_WINDOW(win), 100, 100);
     
@@ -346,7 +338,6 @@ static GtkWidget *create_image_selection_item(const char *dir, const char *name)
     add_css_provider(image);
     gtk_widget_set_halign(image, GTK_ALIGN_CENTER);
     gtk_widget_set_valign(image, GTK_ALIGN_END);
-    gtk_widget_set_size_request(image, 100, 100);
     gtk_box_pack_start(GTK_BOX(vbox), image, TRUE, TRUE, 0);
     gtk_widget_show(image);
     

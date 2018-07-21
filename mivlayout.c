@@ -317,13 +317,17 @@ static void miv_layout_get_preferred_width(
 {
     MivLayout *layout = MIV_LAYOUT(widget);
     MivLayoutPrivate *priv = layout->priv;
+    int image_width = 0;
     
     for (int i = 0; i < NR_CHILDREN; i++) {
-	if (priv->children[i].w != NULL)
+	if (priv->children[i].w != NULL) {
 	    gtk_widget_get_preferred_size(priv->children[i].w, &priv->children[i].preferred, NULL);
+	    if (i == CHILD_IMAGE)
+		image_width = priv->children[i].preferred.width;
+	}
     }
     
-    *minimum = *natural = 0;
+    *minimum = *natural = priv->is_fullscreen ? 0 : image_width;
 }
 
 static void miv_layout_get_preferred_height(
@@ -333,13 +337,17 @@ static void miv_layout_get_preferred_height(
 {
     MivLayout *layout = MIV_LAYOUT(widget);
     MivLayoutPrivate *priv = layout->priv;
+    int image_height = 0;
     
     for (int i = 0; i < NR_CHILDREN; i++) {
-	if (priv->children[i].w != NULL)
+	if (priv->children[i].w != NULL) {
 	    gtk_widget_get_preferred_size(priv->children[i].w, &priv->children[i].preferred, NULL);
+	    if (i == CHILD_IMAGE)
+		image_height = priv->children[i].preferred.height;
+	}
     }
     
-    *minimum = *natural = 0;
+    *minimum = *natural = priv->is_fullscreen ? 0 : image_height;
 }
 
 static void miv_layout_size_allocate(
