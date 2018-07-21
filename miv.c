@@ -175,7 +175,7 @@ static void relayout(void)
     else
 	set_status_string(STATUS_FULLSCREEN, NULL);
     
-    gtk_window_resize(GTK_WINDOW(win), 100, 100);
+    gtk_window_resize(GTK_WINDOW(win), 500, 500);
     
     g_object_unref(pb);
     
@@ -393,7 +393,7 @@ int main(int argc, char **argv)
     
     win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     g_signal_connect(G_OBJECT(win), "key-press-event", G_CALLBACK(key_press_event), NULL);
-    gtk_window_set_default_size(GTK_WINDOW(win), 100, 100);
+    gtk_window_set_default_size(GTK_WINDOW(win), 500, 500);
     gtk_widget_show(win);
     
     layout = miv_layout_new();
@@ -418,13 +418,34 @@ int main(int argc, char **argv)
     gtk_widget_show(mode_label);
     gtk_box_pack_start(GTK_BOX(hbox), mode_label, FALSE, FALSE, 0);
     
-    pixbuf = gdk_pixbuf_new_from_file(argv[1], NULL);
+    gchar *path = argv[1];
+    gchar *filepath = NULL, *dirname = NULL;
+    gboolean display_first = FALSE;
     
-    img = gtk_image_new_from_pixbuf(pixbuf);
+    if (g_file_test(path, G_FILE_TEST_IS_DIR))
+	dirname = path;
+    else {
+	filepath = path;
+	dirname = g_path_get_dirname(path);
+    }
+    
+    if (filepath != NULL) {
+	GError *err = NULL;
+	pixbuf = gdk_pixbuf_new_from_file(filepath, &err);
+	if (err != NULL) {
+	    fprintf(stderr, "%s\n", err->message);
+	    exit(1);
+	}
+	img = gtk_image_new_from_pixbuf(pixbuf);
+	display_first = FALSE;
+    } else {
+	img = gtk_image_new_from_icon_name("image-missing", GTK_ICON_SIZE_LARGE_TOOLBAR);
+	display_first = TRUE;
+    }
     gtk_widget_show(img);
     miv_layout_set_image(MIV_LAYOUT(layout), img);
     
-    image_selection_view = image_selection_view_create("/home/masm");
+    image_selection_view = image_selection_view_create(dirname, display_first);
     if (image_selection_view != NULL)
 	miv_layout_set_selection_view(MIV_LAYOUT(layout), image_selection_view);
     

@@ -7,7 +7,7 @@
 
 gboolean miv_display(const gchar *path);
 
-static void move_to_dir(const gchar *dirname);
+static void move_to_dir(const gchar *path, gboolean display_first);
 
 static GtkWidget *viewport = NULL;
 static GtkWidget *hbox = NULL;
@@ -178,7 +178,7 @@ static void enter_it(GtkWidget *view)
 	    if (miv_display(fullpath))
 		select_one(sel.sel, sel.cur);
 	} else
-	    move_to_dir(fullpath);
+	    move_to_dir(fullpath, FALSE);
     }
 }
 
@@ -269,7 +269,7 @@ static GtkWidget *create_image_selection_dir(const char *dir, const char *name, 
     return vbox;
 }
 
-static GtkWidget *create_image_selection_item(const char *dir, const char *name)
+static GtkWidget *create_image_selection_item(const char *dir, const char *name, gboolean *isimage)
 {
     gchar *fullpath = g_strdup_printf("%s/%s", dir, name);
     GtkWidget *w;
@@ -277,8 +277,10 @@ static GtkWidget *create_image_selection_item(const char *dir, const char *name)
     printf("%s\n", fullpath);
     if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
 	w = create_image_selection_file(dir, name, fullpath);
+	*isimage = TRUE;
     } else {
 	w = create_image_selection_dir(dir, name, fullpath);
+	*isimage = FALSE;
     }
     
     if (w == NULL)
@@ -304,7 +306,7 @@ static void hbox_size_allocate(GtkWidget *w, GtkAllocation *alloc, gpointer user
 struct add_item_t {
     const gchar *dirname;
     GtkBox *hbox;
-    GtkWidget *first_item;
+    GtkWidget *first_item, *first_image;
     int nr;
 };
 
@@ -316,12 +318,15 @@ static void add_items(gpointer data, gpointer user_data)
     if (name[0] == '.' && strcmp(name, "..") != 0)
 	return;
     
-    GtkWidget *item = create_image_selection_item(p->dirname, name);
+    gboolean isimage;
+    GtkWidget *item = create_image_selection_item(p->dirname, name, &isimage);
     if (item != NULL) {
 	gtk_box_pack_start(p->hbox, item, FALSE, FALSE, 0);
 	gtk_widget_show(item);
 	if (p->first_item == NULL)
 	    p->first_item = item;
+	if (isimage && p->first_image == NULL)
+	    p->first_image = item;
 	p->nr++;
     }
 }
@@ -333,7 +338,7 @@ static int compare_names(gconstpointer a, gconstpointer b)
     return strcmp(*ap, *bp);
 }
 
-static void move_to_dir(const gchar *path)
+static void move_to_dir(const gchar *path, gboolean display_first)
 {
     gchar *dirname = g_strdup(path);
     
@@ -375,17 +380,26 @@ static void move_to_dir(const gchar *path)
     struct add_item_t param;
     param.dirname = dirname;
     param.hbox = GTK_BOX(hbox);
-    param.first_item = NULL;
+    param.first_item = param.first_image = NULL;
     param.nr = 0;
     g_ptr_array_foreach(ary, add_items, &param);
     
     g_ptr_array_free(ary, TRUE);
     
-    if (param.first_item != NULL)
+    if (param.first_item != NULL) {
 	hover_one(NULL, param.first_item, 0);
+	
+	if (display_first && param.first_image != NULL) {
+	    hover_one(param.first_item, param.first_image, 0);
+	    
+	    gchar *fullpath = g_object_get_qdata(G_OBJECT(param.first_image), miv_selection_fullpath_quark());
+	    if (miv_display(fullpath))
+		select_one(NULL, param.first_image);
+	}
+    }
 }
 
-GtkWidget *image_selection_view_create(const gchar *dirname)
+GtkWidget *image_selection_view_create(const gchar *dirname, gboolean display_first)
 {
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_widget_set_name(vbox, "image-selection");
@@ -411,7 +425,7 @@ GtkWidget *image_selection_view_create(const gchar *dirname)
     gtk_box_pack_start(GTK_BOX(vbox), curpath, FALSE, TRUE, 0);
     gtk_widget_show(curpath);
     
-    move_to_dir(dirname);
+    move_to_dir(dirname, display_first);
     
     return vbox;
 }
