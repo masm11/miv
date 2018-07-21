@@ -27,20 +27,23 @@ static int tx = 0, ty = 0;
 static gboolean maximize = FALSE;
 
 static const char css_text[] =
-	"label#labelbox {"
+	"box#labelbox label {"
 	" color: #ffffff;"
-	" background-color: #000000;"
+	" background-color: rgba(0,0,0,0.7);"
 	"}"
 	"box#image-selection {"
-	" background-color: rgba(1,1,1,0.3);"
+	" background-color: rgba(1,1,1,0.7);"
 	"}"
 	"box#image-selection box {"
 	" margin: 5px;"
 	" padding: 5px;"
 	" background-color: rgba(0,0,0,0.7);"
 	"}"
-	"box#image-selection box label {"
+	"box#image-selection label {"
 	" font-size: x-small;"
+	" color: #ffffff;"
+	" margin-top: 5px;"
+	" margin-left: 5px;"
 	"}"
 ;
 
@@ -59,10 +62,10 @@ static void img_size_allocate(GtkWidget *widget, GtkAllocation *allocation, gpoi
 	    allocation->width, allocation->height, allocation->x, allocation->y);
 }
 
-static void add_css_provider(GtkWidget *label)
+static void add_css_provider(GtkWidget *w)
 {
     GtkStyleContext *style_context;
-    style_context = gtk_widget_get_style_context(label);
+    style_context = gtk_widget_get_style_context(w);
     gtk_style_context_add_provider(style_context, GTK_STYLE_PROVIDER(css_provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
 }
 
@@ -355,7 +358,7 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
 #define SIZE 100.0
 static GtkWidget *create_image_selection_item(const char *dir, const char *name)
 {
-    const gchar *path = g_strdup_printf("%s/%s", dir, name);
+    gchar *path = g_strdup_printf("%s/%s", dir, name);
     GError *err = NULL;
     GdkPixbuf *pb_old = gdk_pixbuf_new_from_file(path, &err);
     if (err != NULL)
@@ -371,6 +374,7 @@ static GtkWidget *create_image_selection_item(const char *dir, const char *name)
     
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     add_css_provider(vbox);
+    g_object_set_data_full(G_OBJECT(vbox), "fullpath", path, (GDestroyNotify) g_free);
     
     GtkWidget *image = gtk_image_new_from_pixbuf(pb);
     add_css_provider(image);
@@ -380,13 +384,6 @@ static GtkWidget *create_image_selection_item(const char *dir, const char *name)
     gtk_widget_get_preferred_size(image, NULL, NULL);		// hack!
     gtk_box_pack_start(GTK_BOX(vbox), image, TRUE, TRUE, 0);
     gtk_widget_show(image);
-    
-    GtkWidget *filename = gtk_label_new(name);
-    add_css_provider(filename);
-    gtk_widget_set_size_request(filename, 100, -1);
-    gtk_widget_get_preferred_size(filename, NULL, NULL);		// hack!
-    gtk_box_pack_end(GTK_BOX(vbox), filename, FALSE, FALSE, 0);
-    gtk_widget_show(filename);
     
     g_object_unref(pb_old);
     g_object_unref(pb);
@@ -410,6 +407,16 @@ static GtkWidget *create_image_selection_view(const gchar *dirname)
     gtk_box_pack_end(GTK_BOX(vbox), hbox, FALSE, FALSE, 0);
     gtk_widget_show(hbox);
     
+#if 0
+    {
+	GtkWidget *item = create_image_selection_item(dirname, "..");
+	if (item != NULL) {
+	    gtk_box_pack_start(GTK_BOX(hbox), item, FALSE, FALSE, 0);
+	    gtk_widget_show(item);
+	}
+    }
+#endif
+    
     GError *err = NULL;
     GDir *dir = g_dir_open(dirname, 0, &err);
     if (err != NULL) {
@@ -428,6 +435,13 @@ static GtkWidget *create_image_selection_view(const gchar *dirname)
 	}
     }
     g_dir_close(dir);
+    
+    GtkWidget *curpath = gtk_label_new("foobar.txt");
+    add_css_provider(curpath);
+    gtk_label_set_xalign(GTK_LABEL(curpath), 0);
+    gtk_widget_get_preferred_size(curpath, NULL, NULL);		// hack!
+    gtk_box_pack_start(GTK_BOX(vbox), curpath, FALSE, TRUE, 0);
+    gtk_widget_show(curpath);
     
     return vbox;
 }
