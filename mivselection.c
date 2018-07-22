@@ -349,6 +349,24 @@ static void item_pressed(GtkGestureMultiPress *gesture, gint n_press, gdouble x,
 	move_to_dir(fullpath, FALSE);
 }
 
+static gboolean item_enter_notify_event(GtkWidget *w, GdkEvent *ev, gpointer user_data)
+{
+    GtkWidget *item = w;
+    while (item != NULL) {
+	GtkStyleContext *style_context = gtk_widget_get_style_context(item);
+	if (gtk_style_context_has_class(style_context, "item"))
+	    break;
+	item = gtk_widget_get_parent(item);
+    }
+    assert(item != NULL);
+    
+    struct find_selected_t sel;
+    find_selected(&sel);
+    hover_one(sel.cur, item, 0);
+    
+    return TRUE;
+}
+
 static GtkWidget *create_image_selection_item(const char *dir, const char *name, gboolean *isimage)
 {
     gchar *fullpath = g_strdup_printf("%s/%s", dir, name);
@@ -370,6 +388,7 @@ static GtkWidget *create_image_selection_item(const char *dir, const char *name,
 	gtk_event_controller_set_propagation_phase(GTK_EVENT_CONTROLLER(gesture), GTK_PHASE_TARGET);
 	g_signal_connect(G_OBJECT(gesture), "pressed", G_CALLBACK(item_pressed), NULL);
 	g_object_set_qdata_full(G_OBJECT(w), miv_selection_gesture_quark(), gesture, g_object_unref);  // to unref gesture when widget destruction.
+	g_signal_connect(G_OBJECT(evbox), "enter-notify-event", G_CALLBACK(item_enter_notify_event), NULL);
     } else
 	g_free(fullpath);
     
