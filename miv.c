@@ -170,7 +170,7 @@ static void relayout(void)
     if (scale_ratio != 1.0) {
 	int width = gdk_pixbuf_get_width(pb_old);
 	int height = gdk_pixbuf_get_height(pb_old);
-	pb = gdk_pixbuf_scale_simple(pb_old, width * scale_ratio, height * scale_ratio, GDK_INTERP_BILINEAR);
+	pb = gdk_pixbuf_scale_simple(pb_old, width * scale_ratio, height * scale_ratio, GDK_INTERP_HYPER);
     } else {
 	pb = gdk_pixbuf_copy(pb_old);
     }
