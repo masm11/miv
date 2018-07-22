@@ -18,6 +18,7 @@ static GIOChannel *ioch;
 
 G_DEFINE_QUARK(miv-selection-fullpath, miv_selection_fullpath)
 G_DEFINE_QUARK(miv-selection-image, miv_selection_image)
+G_DEFINE_QUARK(miv-selection-job, miv_selection_job)
 
 static void hover_one(GtkWidget *from, GtkWidget *to, int pos)
 {
@@ -26,7 +27,7 @@ static void hover_one(GtkWidget *from, GtkWidget *to, int pos)
     if (to != NULL) {
 	gtk_widget_set_state_flags(to, GTK_STATE_FLAG_PRELIGHT, FALSE);
 	
-	gchar *fullpath = g_object_get_qdata(G_OBJECT(to), miv_selection_fullpath_quark());
+	const gchar *fullpath = g_object_get_qdata(G_OBJECT(to), miv_selection_fullpath_quark());
 	gtk_label_set_text(GTK_LABEL(curpath), fullpath);
 	
 	GtkAllocation alloc;
@@ -119,7 +120,7 @@ static void display_next(GtkWidget *view)
     find_selected(&sel);
     
     if (sel.cur != sel.sel) {
-	gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.cur), miv_selection_fullpath_quark());
+	const gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.cur), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
 	    if (miv_display(fullpath)) {
 		select_one(sel.sel, sel.cur);
@@ -131,7 +132,7 @@ static void display_next(GtkWidget *view)
     if (sel.cur != NULL && sel.next != NULL) {
 	hover_one(sel.cur, sel.next, sel.next_pos);
 	
-	gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.next), miv_selection_fullpath_quark());
+	const gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.next), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
 	    if (miv_display(fullpath)) {
 		select_one(sel.sel, sel.next);
@@ -148,7 +149,7 @@ static void display_prev(GtkWidget *view)
     find_selected(&sel);
     
     if (sel.cur != sel.sel) {
-	gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.cur), miv_selection_fullpath_quark());
+	const gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.cur), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
 	    if (miv_display(fullpath)) {
 		select_one(sel.sel, sel.cur);
@@ -160,7 +161,7 @@ static void display_prev(GtkWidget *view)
     if (sel.cur != NULL && sel.prev != NULL) {
 	hover_one(sel.cur, sel.prev, sel.prev_pos);
 	
-	gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.prev), miv_selection_fullpath_quark());
+	const gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.prev), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
 	    if (miv_display(fullpath)) {
 		select_one(sel.sel, sel.prev);
@@ -177,7 +178,7 @@ static void enter_it(GtkWidget *view)
     find_selected(&sel);
     
     if (sel.cur != NULL) {
-	gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.cur), miv_selection_fullpath_quark());
+	const gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.cur), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
 	    if (miv_display(fullpath))
 		select_one(sel.sel, sel.cur);
@@ -241,9 +242,8 @@ static GtkWidget *create_image_selection_file(const char *dir, const char *name,
     
     g_object_set_qdata(G_OBJECT(vbox), miv_selection_image_quark(), image);
     
-    struct thumbnail_creator_job_t *job = g_new0(struct thumbnail_creator_job_t, 1);
-    job->fullpath = fullpath;
-    job->vbox = vbox;
+    struct thumbnail_creator_job_t *job = thumbnail_creator_job_new(fullpath, vbox);
+    g_object_set_qdata_full(G_OBJECT(vbox), miv_selection_job_quark(), job, (GDestroyNotify) thumbnail_creator_job_free);
     thumbnail_creator_put(job);
     
     return vbox;
@@ -269,8 +269,7 @@ static void replace_image_selection_file(struct thumbnail_creator_job_t *job)
     gtk_widget_show(img);
     
     g_object_set_qdata(G_OBJECT(vbox), miv_selection_image_quark(), img);
-    
-    g_object_unref(pixbuf);
+    g_object_set_qdata(G_OBJECT(vbox), miv_selection_job_quark(), NULL);
 }
 
 static GtkWidget *create_image_selection_dir(const char *dir, const char *name, gchar *fullpath)
@@ -293,7 +292,6 @@ static GtkWidget *create_image_selection_item(const char *dir, const char *name,
     gchar *fullpath = g_strdup_printf("%s/%s", dir, name);
     GtkWidget *w;
     
-    printf("%s\n", fullpath);
     if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
 	w = create_image_selection_file(dir, name, fullpath);
 	*isimage = TRUE;
@@ -398,9 +396,6 @@ static void move_to_dir(const gchar *path, gboolean display_first)
     while (lp != NULL) {
 	struct thumbnail_creator_job_t *job = lp->data;
 	lp = g_list_remove(lp, job);
-	if (job->pixbuf != NULL)
-	    g_object_unref(job->pixbuf);
-	g_free(job);
     }
     
     gtk_container_foreach(GTK_CONTAINER(hbox), (GtkCallback) gtk_widget_destroy, NULL);
@@ -420,7 +415,7 @@ static void move_to_dir(const gchar *path, gboolean display_first)
 	if (display_first && param.first_image != NULL) {
 	    hover_one(param.first_item, param.first_image, 0);
 	    
-	    gchar *fullpath = g_object_get_qdata(G_OBJECT(param.first_image), miv_selection_fullpath_quark());
+	    const gchar *fullpath = g_object_get_qdata(G_OBJECT(param.first_image), miv_selection_fullpath_quark());
 	    if (miv_display(fullpath))
 		select_one(NULL, param.first_image);
 	}
@@ -439,7 +434,6 @@ static gboolean thumbnail_creator_done(GIOChannel *ch, GIOCondition cond, gpoint
 	struct thumbnail_creator_job_t *job = done->data;
 	done = g_list_remove(done, job);
 	replace_image_selection_file(job);
-	g_free(job);
     }
     
     return TRUE;

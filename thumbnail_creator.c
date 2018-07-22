@@ -128,3 +128,22 @@ GIOChannel *thumbnail_creator_init(void)
     g_io_channel_set_encoding(ch, NULL, NULL);
     return ch;
 }
+
+struct thumbnail_creator_job_t *thumbnail_creator_job_new(const gchar *fullpath, GtkWidget *vbox)
+{
+    struct thumbnail_creator_job_t *job = g_new0(struct thumbnail_creator_job_t, 1);
+    
+    job->fullpath = fullpath;
+    job->vbox = vbox;
+    
+    printf("new: %p\n", job);
+    return job;
+}
+
+void thumbnail_creator_job_free(struct thumbnail_creator_job_t *job)
+{
+    printf("free: %p\n", job);
+    if (job->pixbuf != NULL)
+	g_object_unref(job->pixbuf);
+    g_free(job);
+}
