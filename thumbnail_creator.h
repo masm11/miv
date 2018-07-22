@@ -7,8 +7,8 @@ struct thumbnail_creator_job_t {
     GtkWidget *vbox;
 };
 
-void thumbnail_creator_put(struct thumbnail_creator_job_t *job);
-GList *thumbnail_creator_get(void);
+void thumbnail_creator_put_job(struct thumbnail_creator_job_t *job);
+GList *thumbnail_creator_get_done(void);
 void thumbnail_creator_prioritize(struct thumbnail_creator_job_t *job);
 GList *thumbnail_creator_cancel(void);
 GIOChannel *thumbnail_creator_init(void);

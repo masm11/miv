@@ -59,7 +59,7 @@ static void *thread(void *parm)
     return NULL;
 }
 
-void thumbnail_creator_put(struct thumbnail_creator_job_t *job)
+void thumbnail_creator_put_job(struct thumbnail_creator_job_t *job)
 {
     g_mutex_lock(mutex);
     list = g_list_prepend(list, job);
@@ -67,7 +67,7 @@ void thumbnail_creator_put(struct thumbnail_creator_job_t *job)
     g_mutex_unlock(mutex);
 }
 
-GList *thumbnail_creator_get(void)
+GList *thumbnail_creator_get_done(void)
 {
     g_mutex_lock(done_mutex);
     GList *lp = done_list;
@@ -147,13 +147,11 @@ struct thumbnail_creator_job_t *thumbnail_creator_job_new(const gchar *fullpath,
     job->fullpath = fullpath;
     job->vbox = vbox;
     
-    printf("new: %p\n", job);
     return job;
 }
 
 void thumbnail_creator_job_free(struct thumbnail_creator_job_t *job)
 {
-    printf("free: %p\n", job);
     if (job->pixbuf != NULL)
 	g_object_unref(job->pixbuf);
     g_free(job);

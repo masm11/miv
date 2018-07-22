@@ -244,7 +244,7 @@ static GtkWidget *create_image_selection_file(const char *dir, const char *name,
     
     struct thumbnail_creator_job_t *job = thumbnail_creator_job_new(fullpath, vbox);
     g_object_set_qdata_full(G_OBJECT(vbox), miv_selection_job_quark(), job, (GDestroyNotify) thumbnail_creator_job_free);
-    thumbnail_creator_put(job);
+    thumbnail_creator_put_job(job);
     
     return vbox;
 }
@@ -440,7 +440,7 @@ static gboolean thumbnail_creator_done(GIOChannel *ch, GIOCondition cond, gpoint
     
     g_io_channel_read_chars(ch, buf, sizeof buf, &r, NULL);
     
-    GList *done = thumbnail_creator_get();
+    GList *done = thumbnail_creator_get_done();
     while (done != NULL) {
 	struct thumbnail_creator_job_t *job = done->data;
 	done = g_list_remove(done, job);
