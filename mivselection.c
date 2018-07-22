@@ -18,6 +18,7 @@ static GIOChannel *ioch;
 
 G_DEFINE_QUARK(miv-selection-fullpath, miv_selection_fullpath)
 G_DEFINE_QUARK(miv-selection-image, miv_selection_image)
+G_DEFINE_QUARK(miv-selection-vbox, miv_selection_vbox)
 G_DEFINE_QUARK(miv-selection-job, miv_selection_job)
 
 static void hover_one(GtkWidget *from, GtkWidget *to, int pos)
@@ -230,8 +231,12 @@ void image_selection_view_key_event(GtkWidget *widget, GdkEventKey *event)
 
 static GtkWidget *create_image_selection_file(const char *dir, const char *name, gchar *fullpath)
 {
+    GtkWidget *evbox = gtk_event_box_new();
+    g_object_set_qdata_full(G_OBJECT(evbox), miv_selection_fullpath_quark(), fullpath, (GDestroyNotify) g_free);
+    
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-    g_object_set_qdata_full(G_OBJECT(vbox), miv_selection_fullpath_quark(), fullpath, (GDestroyNotify) g_free);
+    gtk_container_add(GTK_CONTAINER(evbox), vbox);
+    gtk_widget_show(vbox);
     
     GtkWidget *image = gtk_image_new_from_icon_name("image-loading", GTK_ICON_SIZE_LARGE_TOOLBAR);
     gtk_widget_set_size_request(image, SIZE, SIZE);
@@ -240,21 +245,23 @@ static GtkWidget *create_image_selection_file(const char *dir, const char *name,
     gtk_box_pack_start(GTK_BOX(vbox), image, TRUE, TRUE, 0);
     gtk_widget_show(image);
     
-    g_object_set_qdata(G_OBJECT(vbox), miv_selection_image_quark(), image);
+    g_object_set_qdata(G_OBJECT(evbox), miv_selection_vbox_quark(), vbox);
+    g_object_set_qdata(G_OBJECT(evbox), miv_selection_image_quark(), image);
     
-    struct thumbnail_creator_job_t *job = thumbnail_creator_job_new(fullpath, vbox);
-    g_object_set_qdata_full(G_OBJECT(vbox), miv_selection_job_quark(), job, (GDestroyNotify) thumbnail_creator_job_free);
+    struct thumbnail_creator_job_t *job = thumbnail_creator_job_new(fullpath, evbox);
+    g_object_set_qdata_full(G_OBJECT(evbox), miv_selection_job_quark(), job, (GDestroyNotify) thumbnail_creator_job_free);
     thumbnail_creator_put_job(job);
     
-    return vbox;
+    return evbox;
 }
 
 static void replace_image_selection_file(struct thumbnail_creator_job_t *job)
 {
-    GtkWidget *vbox = job->vbox;
+    GtkWidget *evbox = job->vbox;
     GdkPixbuf *pixbuf = job->pixbuf;
     
-    GtkWidget *img = g_object_get_qdata(G_OBJECT(vbox), miv_selection_image_quark());
+    GtkWidget *vbox = g_object_get_qdata(G_OBJECT(evbox), miv_selection_vbox_quark());
+    GtkWidget *img = g_object_get_qdata(G_OBJECT(evbox), miv_selection_image_quark());
     gtk_widget_destroy(img);
     
     if (pixbuf != NULL)
@@ -268,14 +275,18 @@ static void replace_image_selection_file(struct thumbnail_creator_job_t *job)
     gtk_box_pack_start(GTK_BOX(vbox), img, TRUE, TRUE, 0);
     gtk_widget_show(img);
     
-    g_object_set_qdata(G_OBJECT(vbox), miv_selection_image_quark(), img);
-    g_object_set_qdata(G_OBJECT(vbox), miv_selection_job_quark(), NULL);
+    g_object_set_qdata(G_OBJECT(evbox), miv_selection_image_quark(), img);
+    g_object_set_qdata(G_OBJECT(evbox), miv_selection_job_quark(), NULL);
 }
 
 static GtkWidget *create_image_selection_dir(const char *dir, const char *name, gchar *fullpath)
 {
+    GtkWidget *evbox = gtk_event_box_new();
+    g_object_set_qdata_full(G_OBJECT(evbox), miv_selection_fullpath_quark(), fullpath, (GDestroyNotify) g_free);
+
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-    g_object_set_qdata_full(G_OBJECT(vbox), miv_selection_fullpath_quark(), fullpath, (GDestroyNotify) g_free);
+    gtk_container_add(GTK_CONTAINER(evbox), vbox);
+    gtk_widget_show(vbox);
     
     GtkWidget *image = gtk_image_new_from_icon_name("folder", GTK_ICON_SIZE_DND);
     gtk_widget_set_size_request(image, SIZE, SIZE);
@@ -284,7 +295,7 @@ static GtkWidget *create_image_selection_dir(const char *dir, const char *name, 
     gtk_box_pack_start(GTK_BOX(vbox), image, TRUE, TRUE, 0);
     gtk_widget_show(image);
     
-    return vbox;
+    return evbox;
 }
 
 static gboolean item_draw(GtkWidget *w, cairo_t *cr, gpointer user_data)
@@ -293,6 +304,20 @@ static gboolean item_draw(GtkWidget *w, cairo_t *cr, gpointer user_data)
     if (job != NULL)
 	thumbnail_creator_prioritize(job);
     
+    return FALSE;
+}
+
+static gboolean item_button_press_event(GtkWidget *w, GdkEventButton *event, gpointer user_data)
+{
+    printf("----\n");
+    printf("type: %d\n", event->type);
+    printf("button: %d\n", event->button);
+    return FALSE;
+}
+
+static gboolean false(void)
+{
+    printf("false\n");
     return FALSE;
 }
 
@@ -309,9 +334,17 @@ static GtkWidget *create_image_selection_item(const char *dir, const char *name,
 	*isimage = FALSE;
     }
     
-    if (w != NULL)
+    if (w != NULL) {
+	gtk_widget_add_events(w, GDK_BUTTON_MOTION_MASK);
+	gtk_widget_add_events(w, GDK_BUTTON_PRESS_MASK);
+	gtk_widget_add_events(w, GDK_BUTTON_RELEASE_MASK);
+	gtk_widget_add_events(w, GDK_SCROLL_MASK);
 	g_signal_connect(G_OBJECT(w), "draw", G_CALLBACK(item_draw), NULL);
-    else
+	g_signal_connect(G_OBJECT(w), "button-press-event", G_CALLBACK(item_button_press_event), NULL);
+	g_signal_connect(G_OBJECT(w), "button-release-event", G_CALLBACK(false), NULL);
+	g_signal_connect(G_OBJECT(w), "motion-notify-event", G_CALLBACK(false), NULL);
+	g_signal_connect(G_OBJECT(w), "scroll-event", G_CALLBACK(false), NULL);
+    } else
 	g_free(fullpath);
     
     return w;
