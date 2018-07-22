@@ -213,19 +213,10 @@ static void layout_translation_changed(GtkWidget *layout, gpointer data, gpointe
 
 static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer user_data)
 {
-    printf("key_press:\n");
-    
     if (event->keyval == GDK_KEY_Q || event->keyval == GDK_KEY_q) {
 	gtk_main_quit();
 	return TRUE;
     }
-    
-#if 0
-    if (gtk_widget_get_mapped(image_selection_view)) {
-	image_selection_view_key_event(image_selection_view, event);
-	return TRUE;
-    }
-#endif
     
     switch (event->keyval) {
     case GDK_KEY_F:
@@ -385,7 +376,7 @@ int main(int argc, char **argv)
     gtk_init(&argc, &argv);
     
     if (argc < 2) {
-	printf("no file specified.\n");
+	fprintf(stderr, "No file specified.\n");
 	exit(1);
     }
     

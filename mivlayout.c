@@ -486,13 +486,6 @@ static void miv_layout_allocate_child(
 	MivLayout      *layout,
 	struct child_t *child)
 {
-    if (child->w != NULL) {
-	printf("%s %dx%d+%d+%d\n",
-		G_OBJECT_TYPE_NAME(child->w),
-		child->alloc.width,
-		child->alloc.height,
-		child->alloc.x,
-		child->alloc.y);
+    if (child->w != NULL)
 	gtk_widget_size_allocate(child->w, &child->alloc);
-    }
 }
