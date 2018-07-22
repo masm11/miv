@@ -19,6 +19,8 @@ static GIOChannel *ioch;
 G_DEFINE_QUARK(miv-selection-fullpath, miv_selection_fullpath)
 G_DEFINE_QUARK(miv-selection-image, miv_selection_image)
 G_DEFINE_QUARK(miv-selection-vbox, miv_selection_vbox)
+G_DEFINE_QUARK(miv-selection-evbox, miv_selection_evbox)
+G_DEFINE_QUARK(miv-selection-gesture, miv_selection_gesture)
 G_DEFINE_QUARK(miv-selection-job, miv_selection_job)
 
 static void hover_one(GtkWidget *from, GtkWidget *to, int pos)
@@ -231,8 +233,16 @@ void image_selection_view_key_event(GtkWidget *widget, GdkEventKey *event)
 
 static GtkWidget *create_image_selection_file(const char *dir, const char *name, gchar *fullpath)
 {
+    // box: for margin/padding. eventbox doesn't supports event selection.
+    GtkWidget *outer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    GtkStyleContext *style_context = gtk_widget_get_style_context(outer);
+    gtk_style_context_add_class(style_context, "item");
+    
+    // eventbox: for event selection. box doesn't supports margin/padding.
     GtkWidget *evbox = gtk_event_box_new();
-    g_object_set_qdata_full(G_OBJECT(evbox), miv_selection_fullpath_quark(), fullpath, (GDestroyNotify) g_free);
+    g_object_set_qdata_full(G_OBJECT(outer), miv_selection_fullpath_quark(), fullpath, (GDestroyNotify) g_free);
+    gtk_box_pack_start(GTK_BOX(outer), evbox, TRUE, TRUE, 0);
+    gtk_widget_show(evbox);
     
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_container_add(GTK_CONTAINER(evbox), vbox);
@@ -245,14 +255,15 @@ static GtkWidget *create_image_selection_file(const char *dir, const char *name,
     gtk_box_pack_start(GTK_BOX(vbox), image, TRUE, TRUE, 0);
     gtk_widget_show(image);
     
-    g_object_set_qdata(G_OBJECT(evbox), miv_selection_vbox_quark(), vbox);
-    g_object_set_qdata(G_OBJECT(evbox), miv_selection_image_quark(), image);
+    g_object_set_qdata(G_OBJECT(outer), miv_selection_evbox_quark(), evbox);
+    g_object_set_qdata(G_OBJECT(outer), miv_selection_vbox_quark(), vbox);
+    g_object_set_qdata(G_OBJECT(outer), miv_selection_image_quark(), image);
     
-    struct thumbnail_creator_job_t *job = thumbnail_creator_job_new(fullpath, evbox);
-    g_object_set_qdata_full(G_OBJECT(evbox), miv_selection_job_quark(), job, (GDestroyNotify) thumbnail_creator_job_free);
+    struct thumbnail_creator_job_t *job = thumbnail_creator_job_new(fullpath, outer);
+    g_object_set_qdata_full(G_OBJECT(outer), miv_selection_job_quark(), job, (GDestroyNotify) thumbnail_creator_job_free);
     thumbnail_creator_put_job(job);
     
-    return evbox;
+    return outer;
 }
 
 static void replace_image_selection_file(struct thumbnail_creator_job_t *job)
@@ -281,9 +292,15 @@ static void replace_image_selection_file(struct thumbnail_creator_job_t *job)
 
 static GtkWidget *create_image_selection_dir(const char *dir, const char *name, gchar *fullpath)
 {
+    GtkWidget *outer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    GtkStyleContext *style_context = gtk_widget_get_style_context(outer);
+    gtk_style_context_add_class(style_context, "item");
+    
     GtkWidget *evbox = gtk_event_box_new();
-    g_object_set_qdata_full(G_OBJECT(evbox), miv_selection_fullpath_quark(), fullpath, (GDestroyNotify) g_free);
-
+    g_object_set_qdata_full(G_OBJECT(outer), miv_selection_fullpath_quark(), fullpath, (GDestroyNotify) g_free);
+    gtk_box_pack_start(GTK_BOX(outer), evbox, TRUE, TRUE, 0);
+    gtk_widget_show(evbox);
+    
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_container_add(GTK_CONTAINER(evbox), vbox);
     gtk_widget_show(vbox);
@@ -295,7 +312,10 @@ static GtkWidget *create_image_selection_dir(const char *dir, const char *name, 
     gtk_box_pack_start(GTK_BOX(vbox), image, TRUE, TRUE, 0);
     gtk_widget_show(image);
     
-    return evbox;
+    g_object_set_qdata(G_OBJECT(outer), miv_selection_evbox_quark(), evbox);
+    g_object_set_qdata(G_OBJECT(outer), miv_selection_vbox_quark(), vbox);
+    
+    return outer;
 }
 
 static gboolean item_draw(GtkWidget *w, cairo_t *cr, gpointer user_data)
@@ -307,18 +327,26 @@ static gboolean item_draw(GtkWidget *w, cairo_t *cr, gpointer user_data)
     return FALSE;
 }
 
-static gboolean item_button_press_event(GtkWidget *w, GdkEventButton *event, gpointer user_data)
+static void item_pressed(GtkGestureMultiPress *gesture, gint n_press, gdouble x, gdouble y, gpointer user_data)
 {
-    printf("----\n");
-    printf("type: %d\n", event->type);
-    printf("button: %d\n", event->button);
-    return FALSE;
-}
-
-static gboolean false(void)
-{
-    printf("false\n");
-    return FALSE;
+    GtkWidget *item = gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(gesture));
+    while (item != NULL) {
+	GtkStyleContext *style_context = gtk_widget_get_style_context(item);
+	if (gtk_style_context_has_class(style_context, "item"))
+	    break;
+	item = gtk_widget_get_parent(item);
+    }
+    assert(item != NULL);
+    
+    struct find_selected_t sel;
+    find_selected(&sel);
+    hover_one(sel.cur, item, 0);
+    const gchar *fullpath = g_object_get_qdata(G_OBJECT(item), miv_selection_fullpath_quark());
+    if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
+	if (miv_display(fullpath))
+	    select_one(sel.sel, item);
+    } else
+	move_to_dir(fullpath, FALSE);
 }
 
 static GtkWidget *create_image_selection_item(const char *dir, const char *name, gboolean *isimage)
@@ -335,15 +363,13 @@ static GtkWidget *create_image_selection_item(const char *dir, const char *name,
     }
     
     if (w != NULL) {
-	gtk_widget_add_events(w, GDK_BUTTON_MOTION_MASK);
-	gtk_widget_add_events(w, GDK_BUTTON_PRESS_MASK);
-	gtk_widget_add_events(w, GDK_BUTTON_RELEASE_MASK);
-	gtk_widget_add_events(w, GDK_SCROLL_MASK);
 	g_signal_connect(G_OBJECT(w), "draw", G_CALLBACK(item_draw), NULL);
-	g_signal_connect(G_OBJECT(w), "button-press-event", G_CALLBACK(item_button_press_event), NULL);
-	g_signal_connect(G_OBJECT(w), "button-release-event", G_CALLBACK(false), NULL);
-	g_signal_connect(G_OBJECT(w), "motion-notify-event", G_CALLBACK(false), NULL);
-	g_signal_connect(G_OBJECT(w), "scroll-event", G_CALLBACK(false), NULL);
+	
+	GtkWidget *evbox = g_object_get_qdata(G_OBJECT(w), miv_selection_evbox_quark());
+	GtkGesture *gesture = gtk_gesture_multi_press_new(evbox);
+	gtk_event_controller_set_propagation_phase(GTK_EVENT_CONTROLLER(gesture), GTK_PHASE_TARGET);
+	g_signal_connect(G_OBJECT(gesture), "pressed", G_CALLBACK(item_pressed), NULL);
+	g_object_set_qdata_full(G_OBJECT(w), miv_selection_gesture_quark(), gesture, g_object_unref);  // to unref gesture when widget destruction.
     } else
 	g_free(fullpath);
     
