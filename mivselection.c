@@ -369,8 +369,13 @@ static gboolean item_enter_notify_event(GtkWidget *w, GdkEvent *ev, gpointer use
 
 static GtkWidget *create_image_selection_item(const char *dir, const char *name, gboolean *isimage)
 {
-    gchar *fullpath = g_strdup_printf("%s/%s", dir, name);
+    gchar *fullpath;
     GtkWidget *w;
+    
+    if (strcmp(dir, "/") != 0)
+	fullpath = g_strdup_printf("%s/%s", dir, name);
+    else
+	fullpath = g_strdup_printf("/%s", name);
     
     if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
 	w = create_image_selection_file(dir, name, fullpath);
