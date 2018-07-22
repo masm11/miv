@@ -9,6 +9,7 @@ struct thumbnail_creator_job_t {
 
 void thumbnail_creator_put(struct thumbnail_creator_job_t *job);
 GList *thumbnail_creator_get(void);
+void thumbnail_creator_prioritize(struct thumbnail_creator_job_t *job);
 GList *thumbnail_creator_cancel(void);
 GIOChannel *thumbnail_creator_init(void);
 

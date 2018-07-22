@@ -62,7 +62,6 @@ static void *thread(void *parm)
 void thumbnail_creator_put(struct thumbnail_creator_job_t *job)
 {
     g_mutex_lock(mutex);
-    // fixme: search in list.
     list = g_list_prepend(list, job);
     g_cond_signal(cond);
     g_mutex_unlock(mutex);
@@ -75,6 +74,18 @@ GList *thumbnail_creator_get(void)
     done_list = NULL;
     g_mutex_unlock(done_mutex);
     return lp;
+}
+
+void thumbnail_creator_prioritize(struct thumbnail_creator_job_t *job)
+{
+    g_mutex_lock(mutex);
+    GList *lp = g_list_find(list, job);
+    if (lp != NULL) {
+	list = g_list_remove_link(list, lp);
+	list = g_list_concat(lp, list);
+    }
+    g_cond_signal(cond);
+    g_mutex_unlock(mutex);
 }
 
 GList *thumbnail_creator_cancel(void)

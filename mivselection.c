@@ -287,6 +287,15 @@ static GtkWidget *create_image_selection_dir(const char *dir, const char *name, 
     return vbox;
 }
 
+static gboolean item_draw(GtkWidget *w, cairo_t *cr, gpointer user_data)
+{
+    struct thumbnail_creator_job_t *job = g_object_get_qdata(G_OBJECT(w), miv_selection_job_quark());
+    if (job != NULL)
+	thumbnail_creator_prioritize(job);
+    
+    return FALSE;
+}
+
 static GtkWidget *create_image_selection_item(const char *dir, const char *name, gboolean *isimage)
 {
     gchar *fullpath = g_strdup_printf("%s/%s", dir, name);
@@ -300,7 +309,9 @@ static GtkWidget *create_image_selection_item(const char *dir, const char *name,
 	*isimage = FALSE;
     }
     
-    if (w == NULL)
+    if (w != NULL)
+	g_signal_connect(G_OBJECT(w), "draw", G_CALLBACK(item_draw), NULL);
+    else
 	g_free(fullpath);
     
     return w;
