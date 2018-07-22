@@ -101,13 +101,22 @@ static void relayout(void)
     
     if (is_fullscreen) {
 	if (!is_fullscreened) {
+	    /* GTK+ 3.22.30:
+	     * It seems to need hide and show around fullscreen,
+	     * when the image is large.
+	     */
+	    gtk_widget_hide(win);
 	    gtk_window_fullscreen(GTK_WINDOW(win));
+	    gtk_widget_show(win);
+	    
 	    miv_layout_set_fullscreen_mode(MIV_LAYOUT(layout), TRUE);
 	    is_fullscreened = TRUE;
 	}
     } else {
 	if (is_fullscreened) {
+	    gtk_widget_hide(win);
 	    gtk_window_unfullscreen(GTK_WINDOW(win));
+	    gtk_widget_show(win);
 	    miv_layout_set_fullscreen_mode(MIV_LAYOUT(layout), FALSE);
 	    is_fullscreened = FALSE;
 	}
@@ -172,10 +181,10 @@ static void relayout(void)
     
     if (is_fullscreen)
 	set_status_string(STATUS_FULLSCREEN, g_strdup("fullscreen"));
-    else
+    else {
 	set_status_string(STATUS_FULLSCREEN, NULL);
-    
-    gtk_window_resize(GTK_WINDOW(win), 500, 500);
+	gtk_window_resize(GTK_WINDOW(win), 500, 500);
+    }
     
     g_object_unref(pb);
     
