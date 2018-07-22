@@ -446,8 +446,7 @@ int main(int argc, char **argv)
     miv_layout_set_image(MIV_LAYOUT(layout), img);
     
     image_selection_view = image_selection_view_create(dirname, display_first);
-    if (image_selection_view != NULL)
-	miv_layout_set_selection_view(MIV_LAYOUT(layout), image_selection_view);
+    miv_layout_set_selection_view(MIV_LAYOUT(layout), image_selection_view);
     
     gtk_main();
     

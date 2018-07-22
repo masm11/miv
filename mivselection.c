@@ -537,7 +537,6 @@ GtkWidget *image_selection_view_create(const gchar *dirname, gboolean display_fi
 {
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_widget_set_name(vbox, "image-selection");
-    gtk_widget_show(vbox);
     
     GtkWidget *padding = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
     gtk_box_pack_start(GTK_BOX(vbox), padding, TRUE, TRUE, 0);
