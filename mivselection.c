@@ -4,6 +4,7 @@
 #include <sys/fcntl.h>
 #include <unistd.h>
 #include "mivselection.h"
+#include "thumbnail_creator.h"
 
 gboolean miv_display(const gchar *path);
 
@@ -13,7 +14,10 @@ static GtkWidget *viewport = NULL;
 static GtkWidget *hbox = NULL;
 static GtkWidget *curpath = NULL;
 
+static GIOChannel *ioch;
+
 G_DEFINE_QUARK(miv-selection-fullpath, miv_selection_fullpath)
+G_DEFINE_QUARK(miv-selection-image, miv_selection_image)
 
 static void hover_one(GtkWidget *from, GtkWidget *to, int pos)
 {
@@ -225,33 +229,48 @@ void image_selection_view_key_event(GtkWidget *widget, GdkEventKey *event)
 
 static GtkWidget *create_image_selection_file(const char *dir, const char *name, gchar *fullpath)
 {
-    GError *err = NULL;
-    GdkPixbuf *pb_old = gdk_pixbuf_new_from_file(fullpath, &err);
-    if (err != NULL)
-	return NULL;
-    int orig_w = gdk_pixbuf_get_width(pb_old);
-    int orig_h = gdk_pixbuf_get_height(pb_old);
-    double scalew = SIZE / orig_w;
-    double scaleh = SIZE / orig_h;
-    double scale = fmin(scalew, scaleh);
-    int w = orig_w * scale;
-    int h = orig_h * scale;
-    GdkPixbuf *pb = gdk_pixbuf_scale_simple(pb_old, w, h, GDK_INTERP_NEAREST);
-    
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     g_object_set_qdata_full(G_OBJECT(vbox), miv_selection_fullpath_quark(), fullpath, (GDestroyNotify) g_free);
     
-    GtkWidget *image = gtk_image_new_from_pixbuf(pb);
+    GtkWidget *image = gtk_image_new_from_icon_name("image-loading", GTK_ICON_SIZE_LARGE_TOOLBAR);
     gtk_widget_set_size_request(image, SIZE, SIZE);
     gtk_widget_set_halign(image, GTK_ALIGN_CENTER);
     gtk_widget_set_valign(image, GTK_ALIGN_END);
     gtk_box_pack_start(GTK_BOX(vbox), image, TRUE, TRUE, 0);
     gtk_widget_show(image);
     
-    g_object_unref(pb_old);
-    g_object_unref(pb);
+    g_object_set_qdata(G_OBJECT(vbox), miv_selection_image_quark(), image);
+    
+    struct thumbnail_creator_job_t *job = g_new0(struct thumbnail_creator_job_t, 1);
+    job->fullpath = fullpath;
+    job->vbox = vbox;
+    thumbnail_creator_put(job);
     
     return vbox;
+}
+
+static void replace_image_selection_file(struct thumbnail_creator_job_t *job)
+{
+    GtkWidget *vbox = job->vbox;
+    GdkPixbuf *pixbuf = job->pixbuf;
+    
+    GtkWidget *img = g_object_get_qdata(G_OBJECT(vbox), miv_selection_image_quark());
+    gtk_widget_destroy(img);
+    
+    if (pixbuf != NULL)
+	img = gtk_image_new_from_pixbuf(pixbuf);
+    else
+	img = gtk_image_new_from_icon_name("image-loading", GTK_ICON_SIZE_LARGE_TOOLBAR);
+    
+    gtk_widget_set_size_request(img, SIZE, SIZE);
+    gtk_widget_set_halign(img, GTK_ALIGN_CENTER);
+    gtk_widget_set_valign(img, GTK_ALIGN_END);
+    gtk_box_pack_start(GTK_BOX(vbox), img, TRUE, TRUE, 0);
+    gtk_widget_show(img);
+    
+    g_object_set_qdata(G_OBJECT(vbox), miv_selection_image_quark(), img);
+    
+    g_object_unref(pixbuf);
 }
 
 static GtkWidget *create_image_selection_dir(const char *dir, const char *name, gchar *fullpath)
@@ -375,6 +394,15 @@ static void move_to_dir(const gchar *path, gboolean display_first)
     
     g_ptr_array_insert(ary, 0, g_strdup(".."));
     
+    GList *lp = thumbnail_creator_cancel();
+    while (lp != NULL) {
+	struct thumbnail_creator_job_t *job = lp->data;
+	lp = g_list_remove(lp, job);
+	if (job->pixbuf != NULL)
+	    g_object_unref(job->pixbuf);
+	g_free(job);
+    }
+    
     gtk_container_foreach(GTK_CONTAINER(hbox), (GtkCallback) gtk_widget_destroy, NULL);
     
     struct add_item_t param;
@@ -397,6 +425,24 @@ static void move_to_dir(const gchar *path, gboolean display_first)
 		select_one(NULL, param.first_image);
 	}
     }
+}
+
+static gboolean thumbnail_creator_done(GIOChannel *ch, GIOCondition cond, gpointer data)
+{
+    char buf[1];
+    gsize r;
+    
+    g_io_channel_read_chars(ch, buf, sizeof buf, &r, NULL);
+    
+    GList *done = thumbnail_creator_get();
+    while (done != NULL) {
+	struct thumbnail_creator_job_t *job = done->data;
+	done = g_list_remove(done, job);
+	replace_image_selection_file(job);
+	g_free(job);
+    }
+    
+    return TRUE;
 }
 
 GtkWidget *image_selection_view_create(const gchar *dirname, gboolean display_first)
@@ -424,6 +470,9 @@ GtkWidget *image_selection_view_create(const gchar *dirname, gboolean display_fi
     gtk_label_set_xalign(GTK_LABEL(curpath), 0);
     gtk_box_pack_start(GTK_BOX(vbox), curpath, FALSE, TRUE, 0);
     gtk_widget_show(curpath);
+    
+    ioch = thumbnail_creator_init();
+    g_io_add_watch(ioch, G_IO_IN, thumbnail_creator_done, NULL);
     
     move_to_dir(dirname, display_first);
     
