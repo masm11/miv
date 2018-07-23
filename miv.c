@@ -24,8 +24,8 @@ enum {
 
 static GtkWidget *win, *layout = NULL;
 static gboolean is_fullscreen = FALSE, is_fullscreened = FALSE;
-static GdkPixbuf *pixbuf;
-static GtkWidget *img;
+static GdkPixbuf *pixbuf = NULL;
+static GtkWidget *img = NULL;
 static GtkWidget *status = NULL, *mode_label;
 static gchar *status_strings[NR_STATUS] = { NULL, };
 static GtkWidget *labelbox = NULL;
@@ -34,6 +34,11 @@ static int mode = 0;
 static int rotate = 0;	// 0, 90, 180, or 270
 static int scale = 0;
 static gboolean maximize = FALSE;
+
+/* animation */
+static GdkPixbufAnimation *anim = NULL;
+static GdkPixbufAnimationIter *anim_iter = NULL;
+static guint anim_timer = 0;
 
 static const char css_text[] =
 	"box#labelbox label {"
@@ -358,17 +363,82 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
     return TRUE;
 }
 
-gboolean miv_display(const gchar *path)
+static gboolean anim_advance(gpointer user_data)
 {
-    GdkPixbuf *pb;
-    GError *err = NULL;
-    pb = gdk_pixbuf_new_from_file(path, &err);
-    if (err != NULL)
-	return FALSE;
+    anim_timer = 0;
     
-    pixbuf = pb;
+    gdk_pixbuf_animation_iter_advance(anim_iter, NULL);
+    
+    if (pixbuf != NULL) {
+	g_object_unref(pixbuf);
+	pixbuf = NULL;
+    }
+    GdkPixbuf *pb = gdk_pixbuf_animation_iter_get_pixbuf(anim_iter);
+    pixbuf = gdk_pixbuf_copy(pb);
+    
+    int msec = gdk_pixbuf_animation_iter_get_delay_time(anim_iter);
+    if (msec != -1)
+	anim_timer = g_timeout_add(msec, (GSourceFunc) anim_advance, NULL);
+    
     relayout();
-    return TRUE;
+    return FALSE;
+}
+
+static void anim_start(GdkPixbufAnimation *an)
+{
+    if (anim_timer != 0) {
+	g_source_remove(anim_timer);
+	anim_timer = 0;
+    }
+    if (anim_iter != NULL) {
+	g_object_unref(anim_iter);
+	anim_iter = NULL;
+    }
+    if (anim != NULL) {
+	g_object_unref(anim);
+	anim = NULL;
+    }
+    if (pixbuf != NULL) {
+	g_object_unref(pixbuf);
+	pixbuf = NULL;
+    }
+    
+    anim = an;
+    anim_iter = gdk_pixbuf_animation_get_iter(an, NULL);
+    GdkPixbuf *pb = gdk_pixbuf_animation_iter_get_pixbuf(anim_iter);
+    pixbuf = gdk_pixbuf_copy(pb);
+    int msec = gdk_pixbuf_animation_iter_get_delay_time(anim_iter);
+    anim_timer = g_timeout_add(msec, (GSourceFunc) anim_advance, NULL);
+    
+    relayout();
+}
+
+gboolean miv_display(const gchar *path, GError **err)
+{
+    *err = NULL;
+    GdkPixbufAnimation *an = gdk_pixbuf_animation_new_from_file(path, err);
+    if (*err == NULL) {
+	if (!gdk_pixbuf_animation_is_static_image(an)) {
+	    /* This is really an animation. */
+	    anim_start(an);
+	    return TRUE;
+	}
+	g_object_unref(an);
+    }
+    
+    *err = NULL;
+    GdkPixbuf *pb = gdk_pixbuf_new_from_file(path, err);
+    if (*err == NULL) {
+	if (pixbuf != NULL) {
+	    g_object_unref(pixbuf);
+	    pixbuf = NULL;
+	}
+	pixbuf = pb;
+	relayout();
+	return TRUE;
+    }
+    
+    return FALSE;
 }
 
 static void init_style(void)
@@ -429,17 +499,18 @@ int main(int argc, char **argv)
 	dirname = g_path_get_dirname(path);
     }
     
+    img = gtk_image_new_from_icon_name("image-missing", GTK_ICON_SIZE_LARGE_TOOLBAR);
     if (filepath != NULL) {
 	GError *err = NULL;
-	pixbuf = gdk_pixbuf_new_from_file(filepath, &err);
-	if (err != NULL) {
-	    fprintf(stderr, "%s\n", err->message);
+	if (!miv_display(filepath, &err)) {
+	    if (err != NULL)
+		fprintf(stderr, "%s", err->message);
+	    else
+		fprintf(stderr, "Can't display for some reasons.\n");
 	    exit(1);
 	}
-	img = gtk_image_new_from_pixbuf(pixbuf);
 	display_first = FALSE;
     } else {
-	img = gtk_image_new_from_icon_name("image-missing", GTK_ICON_SIZE_LARGE_TOOLBAR);
 	display_first = TRUE;
     }
     gtk_widget_show(img);
