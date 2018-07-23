@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Masm11 Image Viewer
+Comment=Miv
+TryExec=miv
+Exec=miv %f
+Terminal=false
+Type=Application
+Categories=GNOME;GTK;Graphics;2DGraphics;RasterGraphics;Viewer;
+MimeType=image/bmp;image/gif;image/jpeg;image/jpg;image/pjpeg;image/png;image/tiff;image/x-bmp;image/x-gray;image/x-icb;image/x-ico;image/x-png;image/x-portable-anymap;image/x-portable-bitmap;image/x-portable-graymap;image/x-portable-pixmap;image/x-xbitmap;image/x-xpixmap;image/x-pcx;image/svg+xml;image/svg+xml-compressed;image/vnd.wap.wbmp;
+Keywords=Picture;Slideshow;Graphics;
+MimeType=image/bmp;image/g3fax;image/gif;image/jp2;image/jpeg;image/jpeg2000;image/jpg;image/jpx;image/pjpeg;image/png;image/svg+xml;image/svg+xml-compressed;image/tiff;image/vnd.djvu+multipage;image/vnd.rn-realpix;image/vnd.wap.wbmp;image/x-bmp;image/x-bzeps;image/x-compressed-xcf;image/x-eps;image/x-fits;image/x-gimp-gbr;image/x-gimp-gih;image/x-gimp-pat;image/x-gray;image/x-gzeps;image/x-icb;image/x-ico;image/x-icon;image/x-pcx;image/x-pict;image/x-png;image/x-portable-anymap;image/x-portable-bitmap;image/x-portable-graymap;image/x-portable-pixmap;image/x-psd;image/x-psp;image/x-sgi;image/x-tga;image/x-wmf;image/x-xbitmap;image/x-xcf;image/x-xcursor;image/x-xpixmap;image/x-xwindowdump;
