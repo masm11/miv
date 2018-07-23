@@ -23,6 +23,11 @@ enum {
 
 #define MAX_STATUS_STRINGS	16
 
+#define MAX_SCALE		10
+#define DXDY			128
+
+#define ANIM_TIMER_PRIORITY	(G_PRIORITY_DEFAULT_IDLE + 10)	// should be lower than painter.
+
 static GtkWidget *win, *layout = NULL;
 static gboolean is_fullscreen = FALSE, is_fullscreened = FALSE;
 static GdkPixbuf *pixbuf = NULL;
@@ -272,7 +277,7 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
 	    }
 	    /* fall through */
 	case MODE_TRANSLATE:
-	    miv_layout_translate_image(MIV_LAYOUT(layout), 128, 0);
+	    miv_layout_translate_image(MIV_LAYOUT(layout), DXDY, 0);
 	    break;
 	case MODE_ROTATE:
 	    if ((rotate -= 90) < 0)
@@ -290,7 +295,7 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
 	    }
 	    /* fall through */
 	case MODE_TRANSLATE:
-	    miv_layout_translate_image(MIV_LAYOUT(layout), -128, 0);
+	    miv_layout_translate_image(MIV_LAYOUT(layout), -DXDY, 0);
 	    break;
 	case MODE_ROTATE:
 	    if ((rotate += 90) >= 360)
@@ -303,11 +308,11 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
 	switch (mode) {
 	case MODE_NONE:
 	case MODE_TRANSLATE:
-	    miv_layout_translate_image(MIV_LAYOUT(layout), 0, 128);
+	    miv_layout_translate_image(MIV_LAYOUT(layout), 0, DXDY);
 	    break;
 	case MODE_SCALE:
-	    if ((scale += 1) >= 5)
-		scale = 5;
+	    if ((scale += 1) >= MAX_SCALE)
+		scale = MAX_SCALE;
 	    break;
 	}
 	break;
@@ -316,11 +321,11 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
 	switch (mode) {
 	case MODE_NONE:
 	case MODE_TRANSLATE:
-	    miv_layout_translate_image(MIV_LAYOUT(layout), 0, -128);
+	    miv_layout_translate_image(MIV_LAYOUT(layout), 0, -DXDY);
 	    break;
 	case MODE_SCALE:
-	    if ((scale -= 1) <= -5)
-		scale = -5;
+	    if ((scale -= 1) <= -MAX_SCALE)
+		scale = -MAX_SCALE;
 	    break;
 	}
 	break;
@@ -379,9 +384,10 @@ static gboolean anim_advance(gpointer user_data)
     
     int msec = gdk_pixbuf_animation_iter_get_delay_time(anim_iter);
     if (msec != -1)
-	anim_timer = g_timeout_add(msec, (GSourceFunc) anim_advance, NULL);
+	anim_timer = g_timeout_add_full(ANIM_TIMER_PRIORITY, msec, (GSourceFunc) anim_advance, NULL, NULL);
     
     relayout();
+    
     return FALSE;
 }
 
@@ -409,7 +415,7 @@ static void anim_start(GdkPixbufAnimation *an)
     GdkPixbuf *pb = gdk_pixbuf_animation_iter_get_pixbuf(anim_iter);
     pixbuf = gdk_pixbuf_copy(pb);
     int msec = gdk_pixbuf_animation_iter_get_delay_time(anim_iter);
-    anim_timer = g_timeout_add(msec, (GSourceFunc) anim_advance, NULL);
+    anim_timer = g_timeout_add_full(ANIM_TIMER_PRIORITY, msec, (GSourceFunc) anim_advance, NULL, NULL);
     
     relayout();
 }
