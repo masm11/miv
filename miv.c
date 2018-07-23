@@ -3,6 +3,7 @@
 #include <assert.h>
 #include "mivlayout.h"
 #include "mivselection.h"
+#include "miv.h"
 
 enum {
     MODE_NONE,
@@ -415,6 +416,10 @@ static void anim_start(GdkPixbufAnimation *an)
 
 gboolean miv_display(const gchar *path, GError **err)
 {
+    GError *err_dummy;
+    if (err == NULL)
+	err = &err_dummy;
+    
     *err = NULL;
     GdkPixbufAnimation *an = gdk_pixbuf_animation_new_from_file(path, err);
     if (*err == NULL) {

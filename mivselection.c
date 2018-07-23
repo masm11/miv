@@ -5,8 +5,7 @@
 #include <unistd.h>
 #include "mivselection.h"
 #include "thumbnail_creator.h"
-
-gboolean miv_display(const gchar *path);
+#include "miv.h"
 
 static void move_to_dir(const gchar *path, gboolean display_first);
 
@@ -125,7 +124,7 @@ static void display_next(GtkWidget *view)
     if (sel.cur != sel.sel) {
 	const gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.cur), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
-	    if (miv_display(fullpath)) {
+	    if (miv_display(fullpath, NULL)) {
 		select_one(sel.sel, sel.cur);
 		return;
 	    }
@@ -137,7 +136,7 @@ static void display_next(GtkWidget *view)
 	
 	const gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.next), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
-	    if (miv_display(fullpath)) {
+	    if (miv_display(fullpath, NULL)) {
 		select_one(sel.sel, sel.next);
 		return;
 	    }
@@ -154,7 +153,7 @@ static void display_prev(GtkWidget *view)
     if (sel.cur != sel.sel) {
 	const gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.cur), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
-	    if (miv_display(fullpath)) {
+	    if (miv_display(fullpath, NULL)) {
 		select_one(sel.sel, sel.cur);
 		return;
 	    }
@@ -166,7 +165,7 @@ static void display_prev(GtkWidget *view)
 	
 	const gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.prev), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
-	    if (miv_display(fullpath)) {
+	    if (miv_display(fullpath, NULL)) {
 		select_one(sel.sel, sel.prev);
 		return;
 	    }
@@ -183,7 +182,7 @@ static void enter_it(GtkWidget *view)
     if (sel.cur != NULL) {
 	const gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.cur), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
-	    if (miv_display(fullpath))
+	    if (miv_display(fullpath, NULL))
 		select_one(sel.sel, sel.cur);
 	} else
 	    move_to_dir(fullpath, FALSE);
@@ -343,7 +342,7 @@ static void item_pressed(GtkGestureMultiPress *gesture, gint n_press, gdouble x,
     hover_one(sel.cur, item, 0);
     const gchar *fullpath = g_object_get_qdata(G_OBJECT(item), miv_selection_fullpath_quark());
     if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
-	if (miv_display(fullpath))
+	if (miv_display(fullpath, NULL))
 	    select_one(sel.sel, item);
     } else
 	move_to_dir(fullpath, FALSE);
@@ -510,7 +509,7 @@ static void move_to_dir(const gchar *path, gboolean display_first)
 	    hover_one(param.first_item, param.first_image, 0);
 	    
 	    const gchar *fullpath = g_object_get_qdata(G_OBJECT(param.first_image), miv_selection_fullpath_quark());
-	    if (miv_display(fullpath))
+	    if (miv_display(fullpath, NULL))
 		select_one(NULL, param.first_image);
 	}
     }
