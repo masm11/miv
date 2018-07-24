@@ -414,15 +414,15 @@ static void hbox_size_allocate(GtkWidget *w, GtkAllocation *alloc, gpointer user
 }
 
 struct add_item_t {
-    const gchar *dirname;
+    gchar *dirname;
     GtkBox *hbox;
     GtkWidget *first_item, *first_image;
     int nr;
 };
 
-static void add_items(gpointer data, gpointer user_data)
+static void add_items(gconstpointer data, gpointer user_data)
 {
-    gchar *name = data;
+    const gchar *name = data;
     struct add_item_t *p = user_data;
     
     if (name[0] == '.' && strcmp(name, "..") != 0)
@@ -433,11 +433,99 @@ static void add_items(gpointer data, gpointer user_data)
     if (item != NULL) {
 	gtk_box_pack_start(p->hbox, item, FALSE, FALSE, 0);
 	gtk_widget_show(item);
-	if (p->first_item == NULL)
+	if (p->first_item == NULL) {
 	    p->first_item = item;
+	    hover_one(NULL, item, 0);
+	}
 	if (isimage && p->first_image == NULL)
 	    p->first_image = item;
 	p->nr++;
+    }
+}
+
+struct add_items_while_idle_t {
+    struct add_item_t add_item;
+    GPtrArray *ary;
+    gint next_idx;
+};
+static guint idle_id = 0;
+
+static gboolean add_items_while_idle_iter(gpointer user_data)
+{
+    struct add_items_while_idle_t *w = user_data;
+    
+    if (w->next_idx >= w->ary->len) {
+	idle_id = 0;
+	return FALSE;
+    }
+    
+    const gchar *name = g_ptr_array_index(w->ary, w->next_idx);
+    add_items(name, &w->add_item);
+    w->next_idx++;
+    return TRUE;
+}
+
+static void add_items_while_idle_fin(gpointer data)
+{
+    struct add_items_while_idle_t *w = data;
+    
+    g_free(w->add_item.dirname);
+    g_ptr_array_free(w->ary, TRUE);
+    g_free(w);
+    if (idle_id != 0) {
+	g_source_remove(idle_id);
+	idle_id = 0;
+    }
+}
+
+static void add_items_while_idle_start(
+	gchar *dirname, GtkWidget *hbox, GPtrArray *ary)
+{
+    struct add_items_while_idle_t *w = g_new0(struct add_items_while_idle_t, 1);
+    
+    w->add_item.dirname = dirname;
+    w->add_item.hbox = GTK_BOX(hbox);
+    w->ary = ary;
+    idle_id = g_idle_add_full(G_PRIORITY_DEFAULT_IDLE, add_items_while_idle_iter, w, add_items_while_idle_fin);
+}
+
+static GList *job_list_to_replace = NULL;
+static guint image_list_to_replace_idle_id = 0;
+
+static gboolean replace_item_images_while_idle_iter(gpointer user_data)
+{
+    if (job_list_to_replace == NULL) {
+	image_list_to_replace_idle_id = 0;
+	return FALSE;
+    }
+    
+    struct thumbnail_creator_job_t *job = job_list_to_replace->data;
+    job_list_to_replace = g_list_remove(job_list_to_replace, job);
+    replace_image_selection_file(job);
+    return TRUE;
+}
+
+static void replace_item_images_while_idle_fin(gpointer data)
+{
+    if (image_list_to_replace_idle_id != 0) {
+	g_source_remove(image_list_to_replace_idle_id);
+	image_list_to_replace_idle_id = 0;
+    }
+    
+    GList *lp = job_list_to_replace;
+    while (lp != NULL) {
+	struct thumbnail_creator_job_t *job = lp->data;
+	lp = g_list_remove(lp, job);
+    }
+}
+
+static void replace_item_images_while_idle_start(GList *list)
+{
+    job_list_to_replace = g_list_concat(job_list_to_replace, list);
+    
+    if (image_list_to_replace_idle_id == 0) {
+	image_list_to_replace_idle_id =
+		g_idle_add_full(G_PRIORITY_DEFAULT_IDLE + 20, replace_item_images_while_idle_iter, NULL, replace_item_images_while_idle_fin);
     }
 }
 
@@ -485,23 +573,23 @@ static void move_to_dir(const gchar *path, gboolean display_first)
     
     g_ptr_array_insert(ary, 0, g_strdup(".."));
     
+    if (idle_id != 0)
+	g_source_remove(idle_id);
+    
     GList *lp = thumbnail_creator_cancel();
     while (lp != NULL) {
 	struct thumbnail_creator_job_t *job = lp->data;
 	lp = g_list_remove(lp, job);
     }
     
+    printf("destroying items.\n");
     gtk_container_foreach(GTK_CONTAINER(hbox), (GtkCallback) gtk_widget_destroy, NULL);
     
-    struct add_item_t param;
-    param.dirname = dirname;
-    param.hbox = GTK_BOX(hbox);
-    param.first_item = param.first_image = NULL;
-    param.nr = 0;
-    g_ptr_array_foreach(ary, add_items, &param);
+    printf("adding items.\n");
+    add_items_while_idle_start(dirname, hbox, ary);
     
-    g_ptr_array_free(ary, TRUE);
-    
+#if 0
+    printf("selecting.\n");
     if (param.first_item != NULL) {
 	hover_one(NULL, param.first_item, 0);
 	
@@ -513,6 +601,8 @@ static void move_to_dir(const gchar *path, gboolean display_first)
 		select_one(NULL, param.first_image);
 	}
     }
+#endif
+    printf("done.\n");
 }
 
 static gboolean thumbnail_creator_done(GIOChannel *ch, GIOCondition cond, gpointer data)
@@ -523,11 +613,7 @@ static gboolean thumbnail_creator_done(GIOChannel *ch, GIOCondition cond, gpoint
     g_io_channel_read_chars(ch, buf, sizeof buf, &r, NULL);
     
     GList *done = thumbnail_creator_get_done();
-    while (done != NULL) {
-	struct thumbnail_creator_job_t *job = done->data;
-	done = g_list_remove(done, job);
-	replace_image_selection_file(job);
-    }
+    replace_item_images_while_idle_start(done);
     
     return TRUE;
 }
