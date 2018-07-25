@@ -8,15 +8,23 @@
 #include "miv.h"
 #include "mivjobqueue.h"
 
-static void move_to_dir(const gchar *path, gboolean display_first);
+static void move_to_dir(struct miv_selection_t *sw, const gchar *path, gboolean display_first);
 
-static GtkWidget *viewport = NULL;
-static GtkWidget *hbox = NULL;
-static GtkWidget *curpath = NULL;
+struct miv_selection_t {
+    GtkWidget *vbox;
+    GtkWidget *viewport;
+    GtkWidget *hbox;
+    GtkWidget *curpath;
+    
+    GIOChannel *ioch;
+    
+    MivJobQueue *queue;
 
-static GIOChannel *ioch;
-
-static MivJobQueue *queue;
+    struct add_item_t {
+	gchar *dirname;
+	GtkWidget *first_item;
+    } add_items_w;
+};
 
 G_DEFINE_QUARK(miv-selection-fullpath, miv_selection_fullpath)
 G_DEFINE_QUARK(miv-selection-image, miv_selection_image)
@@ -25,7 +33,7 @@ G_DEFINE_QUARK(miv-selection-evbox, miv_selection_evbox)
 G_DEFINE_QUARK(miv-selection-gesture, miv_selection_gesture)
 G_DEFINE_QUARK(miv-selection-job, miv_selection_job)
 
-static void hover_one(GtkWidget *from, GtkWidget *to, int pos)
+static void hover_one(struct miv_selection_t *sw, GtkWidget *from, GtkWidget *to, int pos)
 {
     if (from != NULL)
 	gtk_widget_unset_state_flags(from, GTK_STATE_FLAG_PRELIGHT);
@@ -33,13 +41,13 @@ static void hover_one(GtkWidget *from, GtkWidget *to, int pos)
 	gtk_widget_set_state_flags(to, GTK_STATE_FLAG_PRELIGHT, FALSE);
 	
 	const gchar *fullpath = g_object_get_qdata(G_OBJECT(to), miv_selection_fullpath_quark());
-	gtk_label_set_text(GTK_LABEL(curpath), fullpath);
+	gtk_label_set_text(GTK_LABEL(sw->curpath), fullpath);
 	
 	GtkAllocation alloc;
 	gtk_widget_get_allocation(to, &alloc);
 	double x1 = alloc.x, x2 = alloc.x + alloc.width;
 	
-	GtkAdjustment *adj = gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(viewport));
+	GtkAdjustment *adj = gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(sw->viewport));
 	double val = gtk_adjustment_get_value(adj);
 	double psize = gtk_adjustment_get_page_size(adj);
 	if (x1 < val)
@@ -50,7 +58,7 @@ static void hover_one(GtkWidget *from, GtkWidget *to, int pos)
     }
 }
 
-static void select_one(GtkWidget *from, GtkWidget *to)
+static void select_one(struct miv_selection_t *sw, GtkWidget *from, GtkWidget *to)
 {
     if (from != NULL)
 	gtk_widget_unset_state_flags(from, GTK_STATE_FLAG_SELECTED);
@@ -94,118 +102,108 @@ static void find_selected_iter(GtkWidget *w, gpointer user_data)
     sel->pos++;
 }
 
-static void find_selected(struct find_selected_t *sel)
+static void find_selected(struct miv_selection_t *sw, struct find_selected_t *sel)
 {
     sel->prev = sel->cur = sel->next = sel->sel = NULL;
     sel->prev_pos = sel->cur_pos = sel->next_pos = sel->sel_pos = -1;
     sel->pos = 0;
-    gtk_container_foreach(GTK_CONTAINER(hbox), find_selected_iter, sel);
+    gtk_container_foreach(GTK_CONTAINER(sw->hbox), find_selected_iter, sel);
 }
 
-static void select_next(GtkWidget *view)
+static void select_next(struct miv_selection_t *sw, GtkWidget *view)
 {
     struct find_selected_t sel;
-    find_selected(&sel);
+    find_selected(sw, &sel);
     if (sel.cur != NULL && sel.next != NULL)
-	hover_one(sel.cur, sel.next, sel.next_pos);
+	hover_one(sw, sel.cur, sel.next, sel.next_pos);
 }
 
-static void select_prev(GtkWidget *view)
+static void select_prev(struct miv_selection_t *sw, GtkWidget *view)
 {
     struct find_selected_t sel;
-    find_selected(&sel);
+    find_selected(sw, &sel);
     if (sel.cur != NULL && sel.prev != NULL)
-	hover_one(sel.cur, sel.prev, sel.prev_pos);
+	hover_one(sw, sel.cur, sel.prev, sel.prev_pos);
 }
 
-static void display_next(GtkWidget *view)
+static void display_next(struct miv_selection_t *sw, GtkWidget *view)
 {
     struct find_selected_t sel;
     
-    find_selected(&sel);
+    find_selected(sw, &sel);
     
     if (sel.cur != sel.sel) {
 	const gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.cur), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
 	    if (miv_display(fullpath, NULL)) {
-		select_one(sel.sel, sel.cur);
+		select_one(sw, sel.sel, sel.cur);
 		return;
 	    }
 	}
     }
     
     if (sel.cur != NULL && sel.next != NULL) {
-	hover_one(sel.cur, sel.next, sel.next_pos);
+	hover_one(sw, sel.cur, sel.next, sel.next_pos);
 	
 	const gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.next), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
 	    if (miv_display(fullpath, NULL)) {
-		select_one(sel.sel, sel.next);
+		select_one(sw, sel.sel, sel.next);
 		return;
 	    }
 	}
     }
 }
 
-static void display_prev(GtkWidget *view)
+static void display_prev(struct miv_selection_t *sw, GtkWidget *view)
 {
     struct find_selected_t sel;
     
-    find_selected(&sel);
+    find_selected(sw, &sel);
     
     if (sel.cur != sel.sel) {
 	const gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.cur), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
 	    if (miv_display(fullpath, NULL)) {
-		select_one(sel.sel, sel.cur);
+		select_one(sw, sel.sel, sel.cur);
 		return;
 	    }
 	}
     }
     
     if (sel.cur != NULL && sel.prev != NULL) {
-	hover_one(sel.cur, sel.prev, sel.prev_pos);
+	hover_one(sw, sel.cur, sel.prev, sel.prev_pos);
 	
 	const gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.prev), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
 	    if (miv_display(fullpath, NULL)) {
-		select_one(sel.sel, sel.prev);
+		select_one(sw, sel.sel, sel.prev);
 		return;
 	    }
 	}
     }
 }
 
-static void enter_it(GtkWidget *view)
+static void enter_it(struct miv_selection_t *sw, GtkWidget *view)
 {
     struct find_selected_t sel;
     
-    find_selected(&sel);
+    find_selected(sw, &sel);
     
     if (sel.cur != NULL) {
 	const gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.cur), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
 	    if (miv_display(fullpath, NULL))
-		select_one(sel.sel, sel.cur);
+		select_one(sw, sel.sel, sel.cur);
 	} else
-	    move_to_dir(fullpath, FALSE);
+	    move_to_dir(sw, fullpath, FALSE);
     }
 }
 
-#if 0
-void image_selection_view_display_next(GtkWidget *widget)
-{
-    display_next(widget);
-}
-
-void image_selection_view_display_prev(GtkWidget *widget)
-{
-    display_prev(widget);
-}
-#endif
-
+static struct miv_selection_t *sw_key_event = NULL;	// fixme:
 void image_selection_view_key_event(GtkWidget *widget, GdkEventKey *event)
 {
+    struct miv_selection_t *sw = sw_key_event;
     assert(GTK_IS_BOX(widget));
     
     switch (event->keyval) {
@@ -214,19 +212,19 @@ void image_selection_view_key_event(GtkWidget *widget, GdkEventKey *event)
 	gtk_widget_hide(widget);
 	break;
     case GDK_KEY_Right:
-	select_next(widget);
+	select_next(sw, widget);
 	break;
     case GDK_KEY_Left:
-	select_prev(widget);
+	select_prev(sw, widget);
 	break;
     case GDK_KEY_space:
-	display_next(widget);
+	display_next(sw, widget);
 	break;
     case GDK_KEY_BackSpace:
-	display_prev(widget);
+	display_prev(sw, widget);
 	break;
     case GDK_KEY_Return:
-	enter_it(widget);
+	enter_it(sw, widget);
 	break;
     }
 }
@@ -331,6 +329,8 @@ static gboolean item_draw(GtkWidget *w, cairo_t *cr, gpointer user_data)
 
 static void item_pressed(GtkGestureMultiPress *gesture, gint n_press, gdouble x, gdouble y, gpointer user_data)
 {
+    struct miv_selection_t *sw = user_data;
+    
     GtkWidget *item = gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(gesture));
     while (item != NULL) {
 	GtkStyleContext *style_context = gtk_widget_get_style_context(item);
@@ -341,18 +341,20 @@ static void item_pressed(GtkGestureMultiPress *gesture, gint n_press, gdouble x,
     assert(item != NULL);
     
     struct find_selected_t sel;
-    find_selected(&sel);
-    hover_one(sel.cur, item, 0);
+    find_selected(sw, &sel);
+    hover_one(sw, sel.cur, item, 0);
     const gchar *fullpath = g_object_get_qdata(G_OBJECT(item), miv_selection_fullpath_quark());
     if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
 	if (miv_display(fullpath, NULL))
-	    select_one(sel.sel, item);
+	    select_one(sw, sel.sel, item);
     } else
-	move_to_dir(fullpath, FALSE);
+	move_to_dir(sw, fullpath, FALSE);
 }
 
 static gboolean item_enter_notify_event(GtkWidget *w, GdkEvent *ev, gpointer user_data)
 {
+    struct miv_selection_t *sw = user_data;
+    
     GtkWidget *item = w;
     while (item != NULL) {
 	GtkStyleContext *style_context = gtk_widget_get_style_context(item);
@@ -363,13 +365,13 @@ static gboolean item_enter_notify_event(GtkWidget *w, GdkEvent *ev, gpointer use
     assert(item != NULL);
     
     struct find_selected_t sel;
-    find_selected(&sel);
-    hover_one(sel.cur, item, 0);
+    find_selected(sw, &sel);
+    hover_one(sw, sel.cur, item, 0);
     
     return TRUE;
 }
 
-static GtkWidget *create_image_selection_item(const char *dir, const char *name, gboolean *isimage)
+static GtkWidget *create_image_selection_item(struct miv_selection_t *sw, const char *dir, const char *name, gboolean *isimage)
 {
     gchar *fullpath;
     GtkWidget *w;
@@ -388,14 +390,14 @@ static GtkWidget *create_image_selection_item(const char *dir, const char *name,
     }
     
     if (w != NULL) {
-	g_signal_connect(G_OBJECT(w), "draw", G_CALLBACK(item_draw), NULL);
+	g_signal_connect(G_OBJECT(w), "draw", G_CALLBACK(item_draw), sw);
 	
 	GtkWidget *evbox = g_object_get_qdata(G_OBJECT(w), miv_selection_evbox_quark());
 	GtkGesture *gesture = gtk_gesture_multi_press_new(evbox);
 	gtk_event_controller_set_propagation_phase(GTK_EVENT_CONTROLLER(gesture), GTK_PHASE_TARGET);
-	g_signal_connect(G_OBJECT(gesture), "pressed", G_CALLBACK(item_pressed), NULL);
-	g_object_set_qdata_full(G_OBJECT(w), miv_selection_gesture_quark(), gesture, g_object_unref);  // to unref gesture when widget destruction.
-	g_signal_connect(G_OBJECT(evbox), "enter-notify-event", G_CALLBACK(item_enter_notify_event), NULL);
+	g_signal_connect(G_OBJECT(gesture), "pressed", G_CALLBACK(item_pressed), sw);
+	g_object_set_qdata_full(G_OBJECT(w), miv_selection_gesture_quark(), gesture, g_object_unref);  // to unref gesture on widget destruction.
+	g_signal_connect(G_OBJECT(evbox), "enter-notify-event", G_CALLBACK(item_enter_notify_event), sw);
     } else
 	g_free(fullpath);
     
@@ -406,37 +408,35 @@ static GtkWidget *create_image_selection_item(const char *dir, const char *name,
 
 static void viewport_size_allocate(GtkWidget *w, GtkAllocation *alloc, gpointer user_data)
 {
-    GtkAdjustment *adj = gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(viewport));
+    struct miv_selection_t *sw = user_data;
+    GtkAdjustment *adj = gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(sw->viewport));
     gtk_adjustment_set_page_size(adj, alloc->width);
 }
 
 static void hbox_size_allocate(GtkWidget *w, GtkAllocation *alloc, gpointer user_data)
 {
-    GtkAdjustment *adj = gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(viewport));
+    struct miv_selection_t *sw = user_data;
+    GtkAdjustment *adj = gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(sw->viewport));
     gtk_adjustment_set_upper(adj, alloc->width);
 }
 
-struct add_item_t {
-    gchar *dirname;
-    GtkWidget *first_item;
-} add_items_w;
-
 static void add_items_iter(gpointer data, gpointer user_data)
 {
+    struct miv_selection_t *sw = user_data;
     const gchar *name = data;
-    struct add_item_t *p = user_data;
+    struct add_item_t *p = &sw->add_items_w;
     
     if (name[0] == '.' && strcmp(name, "..") != 0)
 	return;
     
     gboolean isimage;
-    GtkWidget *item = create_image_selection_item(p->dirname, name, &isimage);
+    GtkWidget *item = create_image_selection_item(sw, p->dirname, name, &isimage);
     if (item != NULL) {
-	gtk_box_pack_start(GTK_BOX(hbox), item, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(sw->hbox), item, FALSE, FALSE, 0);
 	gtk_widget_show(item);
 	if (p->first_item == NULL) {
 	    p->first_item = item;
-	    hover_one(NULL, item, 0);
+	    hover_one(sw, NULL, item, 0);
 	}
     }
 }
@@ -471,7 +471,7 @@ static void replace_item_images_while_idle_fin(gpointer data)
     }
 }
 
-static void replace_item_images_while_idle_start(GList *list)
+static void replace_item_images_while_idle_start(GList *list, struct miv_selection_t *sw)
 {
     job_list_to_replace = g_list_concat(job_list_to_replace, list);
     
@@ -488,26 +488,33 @@ static int compare_names(gconstpointer a, gconstpointer b)
     return strcmp(*ap, *bp);
 }
 
-static void move_to_dir(const gchar *path, gboolean display_first)
+static gchar *getcanonpath(const gchar *path)
 {
-    gchar *dirname = g_strdup(path);
+    gchar *p = NULL;
+    char buf[1024];
+    int fd = open(".", O_DIRECTORY | O_RDONLY);
+    if (fd != -1) {
+	if (chdir(path) != -1) {
+	    if (getcwd(buf, sizeof buf) != NULL)
+		p = g_strdup(buf);
+	    else
+		perror("getcwd");
+	    fchdir(fd);
+	} else
+	    perror(path);
+	close(fd);
+    } else
+	perror(".");
+    return p;
+}
+
+static void move_to_dir(struct miv_selection_t *sw, const gchar *path, gboolean display_first)
+{
+    gchar *dirname = getcanonpath(path);
+    if (dirname == NULL)
+	dirname = g_strdup(path);
     
-    {
-	char buf[1024];
-	int fd = open(".", O_DIRECTORY | O_RDONLY);
-	if (fd != -1) {
-	    if (chdir(path) != -1) {
-		if (getcwd(buf, sizeof buf) != NULL) {
-		    g_free(dirname);
-		    dirname = g_strdup(buf);
-		}
-		fchdir(fd);
-	    }
-	    close(fd);
-	}
-    }
-    
-    GPtrArray *ary = g_ptr_array_new_with_free_func(g_free);
+    GPtrArray *ary = g_ptr_array_new();
     
     GError *err = NULL;
     GDir *dir = g_dir_open(dirname, 0, &err);
@@ -525,6 +532,9 @@ static void move_to_dir(const gchar *path, gboolean display_first)
     
     g_ptr_array_insert(ary, 0, g_strdup(".."));
     
+    
+    miv_job_queue_cancel_all(sw->queue);
+    
     GList *lp = thumbnail_creator_cancel();
     while (lp != NULL) {
 	struct thumbnail_creator_job_t *job = lp->data;
@@ -532,76 +542,74 @@ static void move_to_dir(const gchar *path, gboolean display_first)
     }
     
     printf("destroying items.\n");
-    gtk_container_foreach(GTK_CONTAINER(hbox), (GtkCallback) gtk_widget_destroy, NULL);
+    gtk_container_foreach(GTK_CONTAINER(sw->hbox), (GtkCallback) gtk_widget_destroy, NULL);
+    
     
     printf("adding items.\n");
     
-    add_items_w.dirname = dirname;
-    add_items_w.first_item = NULL;
+    sw->add_items_w.dirname = dirname;
+    sw->add_items_w.first_item = NULL;
     for (int i = 0; i < ary->len; i++)
-	miv_job_queue_enqueue(queue, g_ptr_array_index(ary, i), &add_items_w, g_free);
+	miv_job_queue_enqueue(sw->queue, g_ptr_array_index(ary, i), sw, g_free);
     
-#if 0
-    printf("selecting.\n");
-    if (param.first_item != NULL) {
-	hover_one(NULL, param.first_item, 0);
-	
-	if (display_first && param.first_image != NULL) {
-	    hover_one(param.first_item, param.first_image, 0);
-	    
-	    const gchar *fullpath = g_object_get_qdata(G_OBJECT(param.first_image), miv_selection_fullpath_quark());
-	    if (miv_display(fullpath, NULL))
-		select_one(NULL, param.first_image);
-	}
-    }
-#endif
+    g_ptr_array_free(ary, TRUE);
+    
     printf("done.\n");
 }
 
-static gboolean thumbnail_creator_done(GIOChannel *ch, GIOCondition cond, gpointer data)
+static gboolean thumbnail_creator_done(GIOChannel *ch, GIOCondition cond, gpointer user_data)
 {
+    struct miv_selection_t *sw = user_data;
     char buf[1];
     gsize r;
     
     g_io_channel_read_chars(ch, buf, sizeof buf, &r, NULL);
     
     GList *done = thumbnail_creator_get_done();
-    replace_item_images_while_idle_start(done);
+    replace_item_images_while_idle_start(done, sw);
     
     return TRUE;
 }
 
-GtkWidget *image_selection_view_create(const gchar *dirname, gboolean display_first)
+struct miv_selection_t *miv_selection_create(const gchar *dirname, gboolean display_first)
 {
-    queue = miv_job_queue_new(G_PRIORITY_DEFAULT_IDLE, add_items_iter);
+    struct miv_selection_t *sw = g_new0(struct miv_selection_t, 1);
     
-    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-    gtk_widget_set_name(vbox, "image-selection");
+    sw->queue = miv_job_queue_new(G_PRIORITY_DEFAULT_IDLE, add_items_iter);
+    
+    sw->vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_set_name(sw->vbox, "image-selection");
     
     GtkWidget *padding = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-    gtk_box_pack_start(GTK_BOX(vbox), padding, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(sw->vbox), padding, TRUE, TRUE, 0);
     gtk_widget_show(padding);
     
-    viewport = gtk_scrolled_window_new(NULL, NULL);
-    g_signal_connect(G_OBJECT(viewport), "size-allocate", G_CALLBACK(viewport_size_allocate), NULL);
-    gtk_box_pack_end(GTK_BOX(vbox), viewport, FALSE, FALSE, 0);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(viewport), GTK_POLICY_AUTOMATIC, GTK_POLICY_NEVER);
-    gtk_widget_show(viewport);
+    sw->viewport = gtk_scrolled_window_new(NULL, NULL);
+    g_signal_connect(G_OBJECT(sw->viewport), "size-allocate", G_CALLBACK(viewport_size_allocate), sw);
+    gtk_box_pack_end(GTK_BOX(sw->vbox), sw->viewport, FALSE, FALSE, 0);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(sw->viewport), GTK_POLICY_AUTOMATIC, GTK_POLICY_NEVER);
+    gtk_widget_show(sw->viewport);
     
-    hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-    g_signal_connect(G_OBJECT(hbox), "size-allocate", G_CALLBACK(hbox_size_allocate), NULL);
-    gtk_container_add(GTK_CONTAINER(viewport), hbox);
-    gtk_widget_show(hbox);
+    sw->hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    g_signal_connect(G_OBJECT(sw->hbox), "size-allocate", G_CALLBACK(hbox_size_allocate), sw);
+    gtk_container_add(GTK_CONTAINER(sw->viewport), sw->hbox);
+    gtk_widget_show(sw->hbox);
     
-    curpath = gtk_label_new("");
-    gtk_label_set_xalign(GTK_LABEL(curpath), 0);
-    gtk_box_pack_start(GTK_BOX(vbox), curpath, FALSE, TRUE, 0);
-    gtk_widget_show(curpath);
+    sw->curpath = gtk_label_new("");
+    gtk_label_set_xalign(GTK_LABEL(sw->curpath), 0);
+    gtk_box_pack_start(GTK_BOX(sw->vbox), sw->curpath, FALSE, TRUE, 0);
+    gtk_widget_show(sw->curpath);
     
-    ioch = thumbnail_creator_init();
-    g_io_add_watch(ioch, G_IO_IN, thumbnail_creator_done, NULL);
+    sw->ioch = thumbnail_creator_init();
+    g_io_add_watch(sw->ioch, G_IO_IN, thumbnail_creator_done, sw);
     
-    move_to_dir(dirname, display_first);
+    move_to_dir(sw, dirname, display_first);
     
-    return vbox;
+    sw_key_event = sw;
+    return sw;
+}
+
+GtkWidget *miv_selection_get_widget(struct miv_selection_t *sw)
+{
+    return sw->vbox;
 }

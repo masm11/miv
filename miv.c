@@ -40,6 +40,7 @@ static int mode = 0;
 static int rotate = 0;	// 0, 90, 180, or 270
 static int scale = 0;
 static gboolean maximize = FALSE;
+static struct miv_selection_t *selw;
 
 /* animation */
 static GdkPixbufAnimation *anim = NULL;
@@ -527,7 +528,8 @@ int main(int argc, char **argv)
     gtk_widget_show(img);
     miv_layout_set_image(MIV_LAYOUT(layout), img);
     
-    image_selection_view = image_selection_view_create(dirname, display_first);
+    selw = miv_selection_create(dirname, display_first);
+    image_selection_view = miv_selection_get_widget(selw);
     miv_layout_set_selection_view(MIV_LAYOUT(layout), image_selection_view);
     
     gtk_main();
