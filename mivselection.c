@@ -6,6 +6,7 @@
 #include "mivselection.h"
 #include "thumbnail_creator.h"
 #include "miv.h"
+#include "mivjobqueue.h"
 
 static void move_to_dir(const gchar *path, gboolean display_first);
 
@@ -14,6 +15,8 @@ static GtkWidget *hbox = NULL;
 static GtkWidget *curpath = NULL;
 
 static GIOChannel *ioch;
+
+static MivJobQueue *queue;
 
 G_DEFINE_QUARK(miv-selection-fullpath, miv_selection_fullpath)
 G_DEFINE_QUARK(miv-selection-image, miv_selection_image)
@@ -415,12 +418,10 @@ static void hbox_size_allocate(GtkWidget *w, GtkAllocation *alloc, gpointer user
 
 struct add_item_t {
     gchar *dirname;
-    GtkBox *hbox;
-    GtkWidget *first_item, *first_image;
-    int nr;
-};
+    GtkWidget *first_item;
+} add_items_w;
 
-static void add_items(gconstpointer data, gpointer user_data)
+static void add_items_iter(gpointer data, gpointer user_data)
 {
     const gchar *name = data;
     struct add_item_t *p = user_data;
@@ -431,62 +432,13 @@ static void add_items(gconstpointer data, gpointer user_data)
     gboolean isimage;
     GtkWidget *item = create_image_selection_item(p->dirname, name, &isimage);
     if (item != NULL) {
-	gtk_box_pack_start(p->hbox, item, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(hbox), item, FALSE, FALSE, 0);
 	gtk_widget_show(item);
 	if (p->first_item == NULL) {
 	    p->first_item = item;
 	    hover_one(NULL, item, 0);
 	}
-	if (isimage && p->first_image == NULL)
-	    p->first_image = item;
-	p->nr++;
     }
-}
-
-struct add_items_while_idle_t {
-    struct add_item_t add_item;
-    GPtrArray *ary;
-    gint next_idx;
-};
-static guint idle_id = 0;
-
-static gboolean add_items_while_idle_iter(gpointer user_data)
-{
-    struct add_items_while_idle_t *w = user_data;
-    
-    if (w->next_idx >= w->ary->len) {
-	idle_id = 0;
-	return FALSE;
-    }
-    
-    const gchar *name = g_ptr_array_index(w->ary, w->next_idx);
-    add_items(name, &w->add_item);
-    w->next_idx++;
-    return TRUE;
-}
-
-static void add_items_while_idle_fin(gpointer data)
-{
-    struct add_items_while_idle_t *w = data;
-    
-    g_free(w->add_item.dirname);
-    g_ptr_array_free(w->ary, TRUE);
-    g_free(w);
-    if (idle_id != 0) {
-	g_source_remove(idle_id);
-	idle_id = 0;
-    }
-}
-
-static void add_items_while_idle_start(
-	gchar *dirname, GtkWidget *hbox, GPtrArray *ary)
-{
-    struct add_items_while_idle_t *w = g_new0(struct add_items_while_idle_t, 1);
-    
-    w->add_item.dirname = dirname;
-    w->add_item.hbox = GTK_BOX(hbox);
-    w->ary = ary;
-    idle_id = g_idle_add_full(G_PRIORITY_DEFAULT_IDLE, add_items_while_idle_iter, w, add_items_while_idle_fin);
 }
 
 static GList *job_list_to_replace = NULL;
@@ -573,9 +525,6 @@ static void move_to_dir(const gchar *path, gboolean display_first)
     
     g_ptr_array_insert(ary, 0, g_strdup(".."));
     
-    if (idle_id != 0)
-	g_source_remove(idle_id);
-    
     GList *lp = thumbnail_creator_cancel();
     while (lp != NULL) {
 	struct thumbnail_creator_job_t *job = lp->data;
@@ -586,7 +535,11 @@ static void move_to_dir(const gchar *path, gboolean display_first)
     gtk_container_foreach(GTK_CONTAINER(hbox), (GtkCallback) gtk_widget_destroy, NULL);
     
     printf("adding items.\n");
-    add_items_while_idle_start(dirname, hbox, ary);
+    
+    add_items_w.dirname = dirname;
+    add_items_w.first_item = NULL;
+    for (int i = 0; i < ary->len; i++)
+	miv_job_queue_enqueue(queue, g_ptr_array_index(ary, i), &add_items_w, g_free);
     
 #if 0
     printf("selecting.\n");
@@ -620,6 +573,8 @@ static gboolean thumbnail_creator_done(GIOChannel *ch, GIOCondition cond, gpoint
 
 GtkWidget *image_selection_view_create(const gchar *dirname, gboolean display_first)
 {
+    queue = miv_job_queue_new(G_PRIORITY_DEFAULT_IDLE, add_items_iter);
+    
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_widget_set_name(vbox, "image-selection");
     
