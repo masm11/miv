@@ -200,10 +200,8 @@ static void enter_it(struct miv_selection_t *sw, GtkWidget *view)
     }
 }
 
-static struct miv_selection_t *sw_key_event = NULL;	// fixme:
-void image_selection_view_key_event(GtkWidget *widget, GdkEventKey *event)
+void image_selection_view_key_event(GtkWidget *widget, GdkEventKey *event, struct miv_selection_t *sw)
 {
-    struct miv_selection_t *sw = sw_key_event;
     assert(GTK_IS_BOX(widget));
     
     switch (event->keyval) {
@@ -605,7 +603,6 @@ struct miv_selection_t *miv_selection_create(const gchar *dirname, gboolean disp
     
     move_to_dir(sw, dirname, display_first);
     
-    sw_key_event = sw;
     return sw;
 }
 

@@ -273,7 +273,7 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
 	switch (mode) {
 	case MODE_NONE:
 	    if (gtk_widget_get_mapped(image_selection_view)) {
-		image_selection_view_key_event(image_selection_view, event);
+		image_selection_view_key_event(image_selection_view, event, selw);
 		break;
 	    }
 	    /* fall through */
@@ -291,7 +291,7 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
 	switch (mode) {
 	case MODE_NONE:
 	    if (gtk_widget_get_mapped(image_selection_view)) {
-		image_selection_view_key_event(image_selection_view, event);
+		image_selection_view_key_event(image_selection_view, event, selw);
 		break;
 	    }
 	    /* fall through */
@@ -342,7 +342,7 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
     case GDK_KEY_v:
     case GDK_KEY_V:
 	if (gtk_widget_get_mapped(image_selection_view))
-	    image_selection_view_key_event(image_selection_view, event);
+	    image_selection_view_key_event(image_selection_view, event, selw);
 	else
 	    gtk_widget_show(image_selection_view);
 	mode = MODE_NONE;
@@ -351,17 +351,17 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
     case GDK_KEY_Return:
 	if (mode == MODE_NONE) {
 	    if (gtk_widget_get_mapped(image_selection_view))
-		image_selection_view_key_event(image_selection_view, event);
+		image_selection_view_key_event(image_selection_view, event, selw);
 	} else
 	    mode = MODE_NONE;
 	break;
 	
     case GDK_KEY_space:
-	image_selection_view_key_event(image_selection_view, event);
+	image_selection_view_key_event(image_selection_view, event, selw);
 	break;
 	
     case GDK_KEY_BackSpace:
-	image_selection_view_key_event(image_selection_view, event);
+	image_selection_view_key_event(image_selection_view, event, selw);
 	break;
     }
     
