@@ -1,5 +1,13 @@
 #include "mivjobqueue.h"
 
+struct job_t {
+    struct job_t *next;
+    
+    gpointer data;
+    gpointer user_data;
+    GDestroyNotify destroyer;
+};
+
 struct _MivJobQueue {
     GObject parent_instance;
     
@@ -8,13 +16,7 @@ struct _MivJobQueue {
     
     GFunc worker;
     
-    GList *jobs, *last_job;
-};
-
-struct job_t {
-    gpointer data;
-    gpointer user_data;
-    GDestroyNotify destroyer;
+    struct job_t *jobs, *last_job;
 };
 
 G_DEFINE_TYPE(MivJobQueue, miv_job_queue, G_TYPE_OBJECT)
@@ -71,16 +73,14 @@ static gboolean miv_job_queue_iter(gpointer user_data)
 {
     MivJobQueue *queue = user_data;
     
-    GList *lp = queue->jobs;
+    struct job_t *job = queue->jobs;
     
-    if (lp == NULL) {
+    if (job == NULL) {
 	queue->idle_id = 0;
 	return FALSE;	// This do g_source_remove().
     }
     
-    struct job_t *job = lp->data;
-    queue->jobs = g_list_remove(queue->jobs, job);
-    if (queue->jobs == NULL)
+    if ((queue->jobs = job->next) == NULL)
 	queue->last_job = NULL;
     
     (*queue->worker)(job->data, job->user_data);
@@ -96,17 +96,16 @@ void miv_job_queue_enqueue(
 	MivJobQueue *queue, gpointer data, gpointer user_data, GDestroyNotify destroyer)
 {
     struct job_t *job = g_new0(struct job_t, 1);
+    job->next = NULL;
     job->data = data;
     job->user_data = user_data;
     job->destroyer = destroyer;
     
     if (queue->jobs != NULL) {
-	GList *lp = g_list_append(queue->last_job, job);
-	queue->last_job = g_list_last(lp);
-    } else {
-	queue->jobs = g_list_append(queue->jobs, job);
-	queue->last_job = queue->jobs;
-    }
+	queue->last_job->next = job;
+	queue->last_job = job;
+    } else
+	queue->jobs = queue->last_job = job;
     
     if (queue->idle_id == 0)
 	queue->idle_id = g_idle_add_full(queue->priority, miv_job_queue_iter, queue, NULL);
@@ -114,18 +113,18 @@ void miv_job_queue_enqueue(
 
 void miv_job_queue_cancel_all(MivJobQueue *queue)
 {
-    while (TRUE) {
-	GList *lp;
-	if ((lp = queue->jobs) == NULL)
-	    break;
-	struct job_t *job = lp->data;
-	queue->jobs = g_list_remove(queue->jobs, job);
+    struct job_t *job = queue->jobs;
+    while (job != NULL) {
+	struct job_t *next = job->next;
 	
 	if (job->destroyer != NULL)
 	    (*job->destroyer)(job->data);
 	g_free(job);
+	
+	job = next;
     }
-    queue->last_job = NULL;
+    
+    queue->jobs = queue->last_job = NULL;
     
     if (queue->idle_id != 0) {
 	g_source_remove(queue->idle_id);
