@@ -370,6 +370,26 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
     return TRUE;
 }
 
+static void anim_stop(void)
+{
+    if (anim_timer != 0) {
+	g_source_remove(anim_timer);
+	anim_timer = 0;
+    }
+    if (anim_iter != NULL) {
+	g_object_unref(anim_iter);
+	anim_iter = NULL;
+    }
+    if (anim != NULL) {
+	g_object_unref(anim);
+	anim = NULL;
+    }
+    if (pixbuf != NULL) {
+	g_object_unref(pixbuf);
+	pixbuf = NULL;
+    }
+}
+
 static gboolean anim_advance(gpointer user_data)
 {
     anim_timer = 0;
@@ -394,22 +414,7 @@ static gboolean anim_advance(gpointer user_data)
 
 static void anim_start(GdkPixbufAnimation *an)
 {
-    if (anim_timer != 0) {
-	g_source_remove(anim_timer);
-	anim_timer = 0;
-    }
-    if (anim_iter != NULL) {
-	g_object_unref(anim_iter);
-	anim_iter = NULL;
-    }
-    if (anim != NULL) {
-	g_object_unref(anim);
-	anim = NULL;
-    }
-    if (pixbuf != NULL) {
-	g_object_unref(pixbuf);
-	pixbuf = NULL;
-    }
+    anim_stop();
     
     anim = an;
     anim_iter = gdk_pixbuf_animation_get_iter(an, NULL);
@@ -441,10 +446,7 @@ gboolean miv_display(const gchar *path, GError **err)
     *err = NULL;
     GdkPixbuf *pb = gdk_pixbuf_new_from_file(path, err);
     if (*err == NULL) {
-	if (pixbuf != NULL) {
-	    g_object_unref(pixbuf);
-	    pixbuf = NULL;
-	}
+	anim_stop();	// also unref pixbuf.
 	pixbuf = pb;
 	relayout();
 	return TRUE;
