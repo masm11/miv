@@ -323,9 +323,19 @@ static GtkWidget *create_image_selection_dir(const char *dir, const char *name, 
 
 static gboolean item_draw(GtkWidget *w, cairo_t *cr, gpointer user_data)
 {
+    struct miv_selection_t *sw = user_data;
     struct thumbnail_creator_job_t *job = g_object_get_qdata(G_OBJECT(w), miv_selection_job_quark());
-    if (job != NULL)
-	thumbnail_creator_prioritize(job);
+    if (job != NULL) {
+	GtkAllocation alloc;
+	gtk_widget_get_allocation(w, &alloc);
+	
+	GtkAdjustment *adj = gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(sw->viewport));
+	double beg = gtk_adjustment_get_value(adj);
+	double end = beg + gtk_adjustment_get_page_size(adj);
+	
+	if (!(alloc.x + alloc.width < beg || alloc.x >= end))
+	    thumbnail_creator_prioritize(job);
+    }
     
     return FALSE;
 }
