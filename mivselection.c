@@ -19,7 +19,8 @@ struct miv_selection_t {
     GIOChannel *ioch;
     
     MivJobQueue *queue;
-
+    MivJobQueue *replace_queue;
+    
     struct add_item_t {
 	gchar *dirname;
 	GtkWidget *first_item;
@@ -258,25 +259,29 @@ static GtkWidget *create_image_selection_file(const char *dir, const char *name,
     g_object_set_qdata(G_OBJECT(outer), miv_selection_image_quark(), image);
     
     struct thumbnail_creator_job_t *job = thumbnail_creator_job_new(fullpath, outer);
-    g_object_set_qdata_full(G_OBJECT(outer), miv_selection_job_quark(), job, (GDestroyNotify) thumbnail_creator_job_free);
+    g_object_set_qdata_full(G_OBJECT(outer), miv_selection_job_quark(), job, NULL);
     thumbnail_creator_put_job(job);
     
     return outer;
 }
 
-static void replace_image_selection_file(struct thumbnail_creator_job_t *job)
+static void replace_image_selection_file(gpointer data, gpointer user_data)
 {
+    struct thumbnail_creator_job_t *job = data;
     GtkWidget *evbox = job->vbox;
     GdkPixbuf *pixbuf = job->pixbuf;
     
     GtkWidget *vbox = g_object_get_qdata(G_OBJECT(evbox), miv_selection_vbox_quark());
+    assert(GTK_IS_BOX(vbox));
     GtkWidget *img = g_object_get_qdata(G_OBJECT(evbox), miv_selection_image_quark());
+    assert(GTK_IS_IMAGE(img));
     gtk_widget_destroy(img);
     
     if (pixbuf != NULL)
 	img = gtk_image_new_from_pixbuf(pixbuf);
     else
 	img = gtk_image_new_from_icon_name("image-loading", GTK_ICON_SIZE_LARGE_TOOLBAR);
+    assert(GTK_IS_IMAGE(img));
     
     gtk_widget_set_size_request(img, SIZE, SIZE);
     gtk_widget_set_halign(img, GTK_ALIGN_CENTER);
@@ -439,46 +444,6 @@ static void add_items_iter(gpointer data, gpointer user_data)
     }
 }
 
-static GList *job_list_to_replace = NULL;
-static guint image_list_to_replace_idle_id = 0;
-
-static gboolean replace_item_images_while_idle_iter(gpointer user_data)
-{
-    if (job_list_to_replace == NULL) {
-	image_list_to_replace_idle_id = 0;
-	return FALSE;
-    }
-    
-    struct thumbnail_creator_job_t *job = job_list_to_replace->data;
-    job_list_to_replace = g_list_remove(job_list_to_replace, job);
-    replace_image_selection_file(job);
-    return TRUE;
-}
-
-static void replace_item_images_while_idle_fin(gpointer data)
-{
-    if (image_list_to_replace_idle_id != 0) {
-	g_source_remove(image_list_to_replace_idle_id);
-	image_list_to_replace_idle_id = 0;
-    }
-    
-    GList *lp = job_list_to_replace;
-    while (lp != NULL) {
-	struct thumbnail_creator_job_t *job = lp->data;
-	lp = g_list_remove(lp, job);
-    }
-}
-
-static void replace_item_images_while_idle_start(GList *list, struct miv_selection_t *sw)
-{
-    job_list_to_replace = g_list_concat(job_list_to_replace, list);
-    
-    if (image_list_to_replace_idle_id == 0) {
-	image_list_to_replace_idle_id =
-		g_idle_add_full(G_PRIORITY_DEFAULT_IDLE + 20, replace_item_images_while_idle_iter, NULL, replace_item_images_while_idle_fin);
-    }
-}
-
 static int compare_names(gconstpointer a, gconstpointer b)
 {
     const char * const *ap = a;
@@ -532,6 +497,7 @@ static void move_to_dir(struct miv_selection_t *sw, const gchar *path, gboolean 
     
     
     miv_job_queue_cancel_all(sw->queue);
+    miv_job_queue_cancel_all(sw->replace_queue);
     
     GList *lp = thumbnail_creator_cancel();
     while (lp != NULL) {
@@ -564,7 +530,11 @@ static gboolean thumbnail_creator_done(GIOChannel *ch, GIOCondition cond, gpoint
     g_io_channel_read_chars(ch, buf, sizeof buf, &r, NULL);
     
     GList *done = thumbnail_creator_get_done();
-    replace_item_images_while_idle_start(done, sw);
+    while (done != NULL) {
+	struct thumbnail_creator_job_t *job = done->data;
+	done = g_list_remove(done, job);
+	miv_job_queue_enqueue(sw->replace_queue, job, sw, (GDestroyNotify) thumbnail_creator_job_free);
+    }
     
     return TRUE;
 }
@@ -574,6 +544,7 @@ struct miv_selection_t *miv_selection_create(const gchar *dirname, gboolean disp
     struct miv_selection_t *sw = g_new0(struct miv_selection_t, 1);
     
     sw->queue = miv_job_queue_new(G_PRIORITY_DEFAULT_IDLE, add_items_iter);
+    sw->replace_queue = miv_job_queue_new(G_PRIORITY_DEFAULT_IDLE + 20, replace_image_selection_file);
     
     sw->vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_widget_set_name(sw->vbox, "image-selection");
