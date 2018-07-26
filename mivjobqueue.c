@@ -19,6 +19,8 @@ struct _MivJobQueue {
     struct job_t *jobs, *last_job;
 };
 
+static struct job_t *free_list = NULL;
+
 G_DEFINE_TYPE(MivJobQueue, miv_job_queue, G_TYPE_OBJECT)
 
 static void miv_job_queue_class_init(MivJobQueueClass *klass);
@@ -69,6 +71,22 @@ MivJobQueue *miv_job_queue_new(gint priority, GFunc worker)
     return queue;
 }
 
+static struct job_t *job_alloc(void)
+{
+    if (free_list != NULL) {
+	struct job_t *job = free_list;
+	free_list = job->next;
+	return job;
+    }
+    return g_new(struct job_t, 1);
+}
+
+static void job_free(struct job_t *job)
+{
+    job->next = free_list;
+    free_list = job;
+}
+
 static gboolean miv_job_queue_iter(gpointer user_data)
 {
     MivJobQueue *queue = user_data;
@@ -87,7 +105,7 @@ static gboolean miv_job_queue_iter(gpointer user_data)
     
     if (job->destroyer != NULL)
 	(*job->destroyer)(job->data);
-    g_free(job);
+    job_free(job);
     
     return TRUE;
 }
@@ -95,7 +113,7 @@ static gboolean miv_job_queue_iter(gpointer user_data)
 void miv_job_queue_enqueue(
 	MivJobQueue *queue, gpointer data, gpointer user_data, GDestroyNotify destroyer)
 {
-    struct job_t *job = g_new0(struct job_t, 1);
+    struct job_t *job = job_alloc();
     job->next = NULL;
     job->data = data;
     job->user_data = user_data;
@@ -119,7 +137,7 @@ void miv_job_queue_cancel_all(MivJobQueue *queue)
 	
 	if (job->destroyer != NULL)
 	    (*job->destroyer)(job->data);
-	g_free(job);
+	job_free(job);
 	
 	job = next;
     }
