@@ -211,10 +211,16 @@ void image_selection_view_key_event(GtkWidget *widget, GdkEventKey *event, struc
 	gtk_widget_hide(widget);
 	break;
     case GDK_KEY_Right:
-	select_next(sw, widget);
+	if (event->state & GDK_SHIFT_MASK)
+	    display_next(sw, widget);
+	else
+	    select_next(sw, widget);
 	break;
     case GDK_KEY_Left:
-	select_prev(sw, widget);
+	if (event->state & GDK_SHIFT_MASK)
+	    display_prev(sw, widget);
+	else
+	    select_prev(sw, widget);
 	break;
     case GDK_KEY_space:
 	display_next(sw, widget);

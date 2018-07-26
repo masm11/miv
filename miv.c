@@ -272,6 +272,10 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
 	break;
 	
     case GDK_KEY_Left:
+	if (event->state & GDK_SHIFT_MASK) {
+	    image_selection_view_key_event(image_selection_view, event, selw);
+	    break;
+	}
 	switch (mode) {
 	case MODE_NONE:
 	    if (gtk_widget_get_mapped(image_selection_view)) {
@@ -290,6 +294,10 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
 	break;
 	
     case GDK_KEY_Right:
+	if (event->state & GDK_SHIFT_MASK) {
+	    image_selection_view_key_event(image_selection_view, event, selw);
+	    break;
+	}
 	switch (mode) {
 	case MODE_NONE:
 	    if (gtk_widget_get_mapped(image_selection_view)) {
