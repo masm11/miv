@@ -47,6 +47,8 @@ static GdkPixbufAnimation *anim = NULL;
 static GdkPixbufAnimationIter *anim_iter = NULL;
 static guint anim_timer = 0;
 
+#include "M.xpm"
+
 static const char css_text[] =
 	"box#labelbox label {"
 	" color: #ffffff;"
@@ -513,7 +515,9 @@ int main(int argc, char **argv)
 	dirname = g_path_get_dirname(path);
     }
     
-    img = gtk_image_new_from_icon_name("image-missing", GTK_ICON_SIZE_LARGE_TOOLBAR);
+    pixbuf = gdk_pixbuf_new_from_xpm_data(M_xpm);
+    
+    img = gtk_image_new_from_pixbuf(pixbuf);
     if (filepath != NULL) {
 	GError *err = NULL;
 	if (!miv_display(filepath, &err)) {
