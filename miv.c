@@ -52,6 +52,8 @@ static GdkPixbufAnimation *anim = NULL;
 static GdkPixbufAnimationIter *anim_iter = NULL;
 static guint anim_timer = 0;
 
+G_DEFINE_QUARK(miv-on-wayland, miv_on_wayland)
+
 #include "M.xpm"
 
 static const char css_text[] =
@@ -186,6 +188,24 @@ static void transform_replace_image(void)
     gtk_image_set_from_pixbuf(GTK_IMAGE(img), transformed_pixbuf);
 }
 
+static gboolean on_wl(GtkWidget *w)
+{
+    static gboolean yes = TRUE, no = FALSE;
+    
+    GdkDisplay *dpy = gtk_widget_get_display(w);
+    GObject *obj = G_OBJECT(dpy);
+    gboolean *p = g_object_get_qdata(obj, miv_on_wayland_quark());
+    if (p == NULL) {
+	if (strcmp(G_OBJECT_TYPE_NAME(obj), "GdkWaylandDisplay") == 0)
+	    p = &yes;
+	else
+	    p = &no;
+	g_object_set_qdata(obj, miv_on_wayland_quark(), p);
+    }
+    
+    return *p;
+}
+
 static void relayout(void)
 {
     struct transform_params_t *params = &transform_params;
@@ -196,18 +216,22 @@ static void relayout(void)
 	     * It seems to need hide and show around fullscreen,
 	     * when the image is large.
 	     */
-	    gtk_widget_hide(win);
+	    if (on_wl(win))
+		gtk_widget_hide(win);
 	    gtk_window_fullscreen(GTK_WINDOW(win));
-	    gtk_widget_show(win);
+	    if (on_wl(win))
+		gtk_widget_show(win);
 	    
 	    miv_layout_set_fullscreen_mode(MIV_LAYOUT(layout), TRUE);
 	    is_fullscreened = TRUE;
 	}
     } else {
 	if (is_fullscreened) {
-	    gtk_widget_hide(win);
+	    if (on_wl(win))
+		gtk_widget_hide(win);
 	    gtk_window_unfullscreen(GTK_WINDOW(win));
-	    gtk_widget_show(win);
+	    if (on_wl(win))
+		gtk_widget_show(win);
 	    miv_layout_set_fullscreen_mode(MIV_LAYOUT(layout), FALSE);
 	    is_fullscreened = FALSE;
 	}
