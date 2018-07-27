@@ -29,17 +29,22 @@ enum {
 #define ANIM_TIMER_PRIORITY	(G_PRIORITY_DEFAULT_IDLE + 10)	// should be lower than painter.
 
 static GtkWidget *win, *layout = NULL;
-static gboolean is_fullscreen = FALSE, is_fullscreened = FALSE;
+static gboolean is_fullscreened = FALSE;
 static GdkPixbuf *pixbuf = NULL;
+static GdkPixbuf *transformed_pixbuf = NULL;
 static GtkWidget *img = NULL;
 static GtkWidget *status = NULL, *mode_label;
 static gchar *status_strings[NR_STATUS] = { NULL, };
 static GtkWidget *labelbox = NULL;
 static GtkWidget *image_selection_view = NULL;
-static int mode = 0;
-static int rotate = 0;	// 0, 90, 180, or 270
-static int scale = 0;
-static gboolean maximize = FALSE;
+static int mode;
+static struct transform_params_t {
+    gboolean is_fullscreen;
+    int rotate;		// 0, 90, 180, or 270
+    int scale;
+    gboolean maximize;
+    GtkAllocation alloc;
+} transform_params;
 static struct miv_selection_t *selw;
 
 /* animation */
@@ -109,11 +114,83 @@ static void update_status(void)
     g_free(s);
 }
 
+static GdkPixbuf *transform_pixbuf(GdkPixbuf *orig, struct transform_params_t *params)
+{
+    GdkPixbuf *pb = gdk_pixbuf_copy(orig);
+    
+    switch (params->rotate) {
+	GdkPixbuf *pb_old;
+    case 0:
+	set_status_string(STATUS_ROTATE, NULL);
+	break;
+    case 90:
+	set_status_string(STATUS_ROTATE, g_strdup("rotate 90"));
+	pb_old = pb;
+	pb = gdk_pixbuf_rotate_simple(pb_old, GDK_PIXBUF_ROTATE_CLOCKWISE);
+	g_object_unref(pb_old);
+	break;
+    case 180:
+	set_status_string(STATUS_ROTATE, g_strdup("rotate 180"));
+	pb_old = pb;
+	pb = gdk_pixbuf_rotate_simple(pb_old, GDK_PIXBUF_ROTATE_UPSIDEDOWN);
+	g_object_unref(pb_old);
+	break;
+    case 270:
+	set_status_string(STATUS_ROTATE, g_strdup("rotate 270"));
+	pb_old = pb;
+	pb = gdk_pixbuf_rotate_simple(pb_old, GDK_PIXBUF_ROTATE_COUNTERCLOCKWISE);
+	g_object_unref(pb_old);
+	break;
+    }
+    
+    double scale_ratio = 1.0;
+    
+    if (params->maximize && params->is_fullscreen) {
+	set_status_string(STATUS_MAXIMIZE, g_strdup("maximize"));
+	
+	int w = gdk_pixbuf_get_width(pb);
+	int h = gdk_pixbuf_get_height(pb);
+	int lw = params->alloc.width, lh = params->alloc.height;	// size of layout widget.
+	double wscale = (double) lw / w;
+	double hscale = (double) lh / h;
+	scale_ratio = fmin(wscale, hscale);
+    } else
+	set_status_string(STATUS_MAXIMIZE, NULL);
+    
+    if (params->scale != 0) {
+	set_status_string(STATUS_SCALE, g_strdup_printf("scale %+d", params->scale));
+	double ratio = pow(1.25, params->scale);
+	scale_ratio *= ratio;
+    } else
+	set_status_string(STATUS_SCALE, NULL);
+    
+    if (scale_ratio != 1.0) {
+	GdkPixbuf *pb_old = pb;
+	int width = gdk_pixbuf_get_width(pb);
+	int height = gdk_pixbuf_get_height(pb);
+	pb = gdk_pixbuf_scale_simple(pb_old, width * scale_ratio, height * scale_ratio, GDK_INTERP_HYPER);
+	g_object_unref(pb_old);
+    }
+    
+    return pb;
+}
+
+static void transform_replace_image(void)
+{
+    gtk_widget_get_allocation(layout, &transform_params.alloc);
+    GdkPixbuf *pb = transform_pixbuf(pixbuf, &transform_params);
+    if (transformed_pixbuf != NULL)
+	g_object_unref(transformed_pixbuf);
+    transformed_pixbuf = pb;
+    
+    gtk_image_set_from_pixbuf(GTK_IMAGE(img), transformed_pixbuf);
+}
+
 static void relayout(void)
 {
-    GdkPixbuf *pb = NULL, *pb_old;
+    struct transform_params_t *params = &transform_params;
     
-    if (is_fullscreen) {
+    if (params->is_fullscreen) {
 	if (!is_fullscreened) {
 	    /* GTK+ 3.22.30:
 	     * It seems to need hide and show around fullscreen,
@@ -136,71 +213,12 @@ static void relayout(void)
 	}
     }
     
-    pb_old = gdk_pixbuf_copy(pixbuf);
-    switch (rotate) {
-    case 0:
-	set_status_string(STATUS_ROTATE, NULL);
-	pb = gdk_pixbuf_rotate_simple(pb_old, GDK_PIXBUF_ROTATE_NONE);
-	break;
-    case 90:
-	set_status_string(STATUS_ROTATE, g_strdup("rotate 90"));
-	pb = gdk_pixbuf_rotate_simple(pb_old, GDK_PIXBUF_ROTATE_CLOCKWISE);
-	break;
-    case 180:
-	set_status_string(STATUS_ROTATE, g_strdup("rotate 180"));
-	pb = gdk_pixbuf_rotate_simple(pb_old, GDK_PIXBUF_ROTATE_UPSIDEDOWN);
-	break;
-    case 270:
-	set_status_string(STATUS_ROTATE, g_strdup("rotate 270"));
-	pb = gdk_pixbuf_rotate_simple(pb_old, GDK_PIXBUF_ROTATE_COUNTERCLOCKWISE);
-	break;
-    }
-    g_object_unref(pb_old);
-    
-    double scale_ratio = 1.0;
-    
-    pb_old = pb;
-    if (maximize && is_fullscreen) {
-	set_status_string(STATUS_MAXIMIZE, g_strdup("maximize"));
-	
-	int w = gdk_pixbuf_get_width(pb_old);
-	int h = gdk_pixbuf_get_height(pb_old);
-	GtkAllocation alloc;
-	gtk_widget_get_allocation(layout, &alloc);
-	int lw = alloc.width, lh = alloc.height;	// size of layout widget.
-	double wscale = (double) lw / w;
-	double hscale = (double) lh / h;
-	scale_ratio = fmin(wscale, hscale);
-    } else
-	set_status_string(STATUS_MAXIMIZE, NULL);
-    
-    if (scale != 0) {
-	set_status_string(STATUS_SCALE, g_strdup_printf("scale %+d", scale));
-	double ratio = pow(1.25, scale);
-	scale_ratio *= ratio;
-    } else
-	set_status_string(STATUS_SCALE, NULL);
-    
-    if (scale_ratio != 1.0) {
-	int width = gdk_pixbuf_get_width(pb_old);
-	int height = gdk_pixbuf_get_height(pb_old);
-	pb = gdk_pixbuf_scale_simple(pb_old, width * scale_ratio, height * scale_ratio, GDK_INTERP_HYPER);
-    } else {
-	pb = gdk_pixbuf_copy(pb_old);
-    }
-    
-    g_object_unref(pb_old);
-    
-    gtk_image_set_from_pixbuf(GTK_IMAGE(img), pb);
-    
-    if (is_fullscreen)
+    if (params->is_fullscreen)
 	set_status_string(STATUS_FULLSCREEN, g_strdup("fullscreen"));
     else {
 	set_status_string(STATUS_FULLSCREEN, NULL);
 	gtk_window_resize(GTK_WINDOW(win), 500, 500);
     }
-    
-    g_object_unref(pb);
     
     if (labelbox != NULL) {
 	update_status();
@@ -236,6 +254,9 @@ static void layout_translation_changed(GtkWidget *layout, gpointer data, gpointe
 
 static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer user_data)
 {
+    struct transform_params_t *params = &transform_params;
+    gboolean transform_needed = FALSE;
+    
     if (event->keyval == GDK_KEY_Q || event->keyval == GDK_KEY_q) {
 	gtk_main_quit();
 	return TRUE;
@@ -244,12 +265,14 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
     switch (event->keyval) {
     case GDK_KEY_F:
     case GDK_KEY_f:
-	is_fullscreen = !is_fullscreen;
+	params->is_fullscreen = !params->is_fullscreen;
+	transform_needed = TRUE;
 	break;
 	
     case GDK_KEY_M:
     case GDK_KEY_m:
-	maximize = !maximize;
+	params->maximize = !params->maximize;
+	transform_needed = TRUE;
 	break;
 	
     case GDK_KEY_R:
@@ -287,8 +310,9 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
 	    miv_layout_translate_image(MIV_LAYOUT(layout), DXDY, 0);
 	    break;
 	case MODE_ROTATE:
-	    if ((rotate -= 90) < 0)
-		rotate += 360;
+	    if ((params->rotate -= 90) < 0)
+		params->rotate += 360;
+	    transform_needed = TRUE;
 	    break;
 	}
 	break;
@@ -309,8 +333,9 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
 	    miv_layout_translate_image(MIV_LAYOUT(layout), -DXDY, 0);
 	    break;
 	case MODE_ROTATE:
-	    if ((rotate += 90) >= 360)
-		rotate -= 360;
+	    if ((params->rotate += 90) >= 360)
+		params->rotate -= 360;
+	    transform_needed = TRUE;
 	    break;
 	}
 	break;
@@ -322,8 +347,9 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
 	    miv_layout_translate_image(MIV_LAYOUT(layout), 0, DXDY);
 	    break;
 	case MODE_SCALE:
-	    if ((scale += 1) >= MAX_SCALE)
-		scale = MAX_SCALE;
+	    if ((params->scale += 1) >= MAX_SCALE)
+		params->scale = MAX_SCALE;
+	    transform_needed = TRUE;
 	    break;
 	}
 	break;
@@ -335,14 +361,16 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
 	    miv_layout_translate_image(MIV_LAYOUT(layout), 0, -DXDY);
 	    break;
 	case MODE_SCALE:
-	    if ((scale -= 1) <= -MAX_SCALE)
-		scale = -MAX_SCALE;
+	    if ((params->scale -= 1) <= -MAX_SCALE)
+		params->scale = -MAX_SCALE;
+	    transform_needed = TRUE;
 	    break;
 	}
 	break;
 	
     case GDK_KEY_1:
-	scale = 0;
+	params->scale = 0;
+	transform_needed = TRUE;
 	break;
 	
     case GDK_KEY_0:
@@ -375,6 +403,8 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
 	break;
     }
     
+    if (transform_needed)
+	transform_replace_image();
     relayout();
     
     return TRUE;
@@ -417,6 +447,7 @@ static gboolean anim_advance(gpointer user_data)
     if (msec != -1)
 	anim_timer = g_timeout_add_full(ANIM_TIMER_PRIORITY, msec, (GSourceFunc) anim_advance, NULL, NULL);
     
+    transform_replace_image();
     relayout();
     
     return FALSE;
@@ -433,6 +464,7 @@ static void anim_start(GdkPixbufAnimation *an)
     int msec = gdk_pixbuf_animation_iter_get_delay_time(anim_iter);
     anim_timer = g_timeout_add_full(ANIM_TIMER_PRIORITY, msec, (GSourceFunc) anim_advance, NULL, NULL);
     
+    transform_replace_image();
     relayout();
 }
 
@@ -458,6 +490,7 @@ gboolean miv_display(const gchar *path, GError **err)
     if (*err == NULL) {
 	anim_stop();	// also unref pixbuf.
 	pixbuf = pb;
+	transform_replace_image();
 	relayout();
 	return TRUE;
     }
