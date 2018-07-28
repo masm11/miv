@@ -34,7 +34,7 @@ G_DEFINE_QUARK(miv-selection-evbox, miv_selection_evbox)
 G_DEFINE_QUARK(miv-selection-gesture, miv_selection_gesture)
 G_DEFINE_QUARK(miv-selection-job, miv_selection_job)
 
-static void hover_one(struct miv_selection_t *sw, GtkWidget *from, GtkWidget *to, int pos)
+static void hover_one(struct miv_selection_t *sw, GtkWidget *from, GtkWidget *to)
 {
     if (from != NULL)
 	gtk_widget_unset_state_flags(from, GTK_STATE_FLAG_PRELIGHT);
@@ -71,10 +71,6 @@ struct find_selected_t {
     GtkWidget *first, *last;
     GtkWidget *prev, *cur, *next;
     GtkWidget *sel;
-    int prev_pos, cur_pos, next_pos;
-    int sel_pos;
-    
-    int pos;
 };
 
 static void find_selected_iter(GtkWidget *w, gpointer user_data)
@@ -87,34 +83,23 @@ static void find_selected_iter(GtkWidget *w, gpointer user_data)
     sel->last = w;
     
     if (sel->cur == NULL) {
-	if (!(gtk_widget_get_state_flags(w) & GTK_STATE_FLAG_PRELIGHT)) {
+	if (!(gtk_widget_get_state_flags(w) & GTK_STATE_FLAG_PRELIGHT))
 	    sel->prev = w;
-	    sel->prev_pos = sel->pos;
-	} else {
+	else
 	    sel->cur = w;
-	    sel->cur_pos = sel->pos;
-	}
     } else {
-	if (sel->next == NULL) {
+	if (sel->next == NULL)
 	    sel->next = w;
-	    sel->next_pos = sel->pos;
-	}
     }
     
-    if ((gtk_widget_get_state_flags(w) & GTK_STATE_FLAG_SELECTED)) {
+    if ((gtk_widget_get_state_flags(w) & GTK_STATE_FLAG_SELECTED))
 	sel->sel = w;
-	sel->sel_pos = sel->pos;
-    }
-    
-    sel->pos++;
 }
 
 static void find_selected(struct miv_selection_t *sw, struct find_selected_t *sel)
 {
     sel->first = sel->last = NULL;
     sel->prev = sel->cur = sel->next = sel->sel = NULL;
-    sel->prev_pos = sel->cur_pos = sel->next_pos = sel->sel_pos = -1;
-    sel->pos = 0;
     gtk_container_foreach(GTK_CONTAINER(sw->hbox), find_selected_iter, sel);
 }
 
@@ -123,7 +108,7 @@ static void select_next(struct miv_selection_t *sw, GtkWidget *view)
     struct find_selected_t sel;
     find_selected(sw, &sel);
     if (sel.cur != NULL && sel.next != NULL)
-	hover_one(sw, sel.cur, sel.next, sel.next_pos);
+	hover_one(sw, sel.cur, sel.next);
 }
 
 static void select_prev(struct miv_selection_t *sw, GtkWidget *view)
@@ -131,7 +116,7 @@ static void select_prev(struct miv_selection_t *sw, GtkWidget *view)
     struct find_selected_t sel;
     find_selected(sw, &sel);
     if (sel.cur != NULL && sel.prev != NULL)
-	hover_one(sw, sel.cur, sel.prev, sel.prev_pos);
+	hover_one(sw, sel.cur, sel.prev);
 }
 
 static void select_first(struct miv_selection_t *sw, GtkWidget *view)
@@ -139,7 +124,7 @@ static void select_first(struct miv_selection_t *sw, GtkWidget *view)
     struct find_selected_t sel;
     find_selected(sw, &sel);
     if (sel.cur != NULL && sel.first != NULL)
-	hover_one(sw, sel.cur, sel.first, 0);
+	hover_one(sw, sel.cur, sel.first);
 }
 
 static void select_last(struct miv_selection_t *sw, GtkWidget *view)
@@ -147,7 +132,7 @@ static void select_last(struct miv_selection_t *sw, GtkWidget *view)
     struct find_selected_t sel;
     find_selected(sw, &sel);
     if (sel.cur != NULL && sel.last != NULL)
-	hover_one(sw, sel.cur, sel.last, 0);
+	hover_one(sw, sel.cur, sel.last);
 }
 
 static void display_next(struct miv_selection_t *sw, GtkWidget *view)
@@ -167,7 +152,7 @@ static void display_next(struct miv_selection_t *sw, GtkWidget *view)
     }
     
     if (sel.cur != NULL && sel.next != NULL) {
-	hover_one(sw, sel.cur, sel.next, sel.next_pos);
+	hover_one(sw, sel.cur, sel.next);
 	
 	const gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.next), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
@@ -196,7 +181,7 @@ static void display_prev(struct miv_selection_t *sw, GtkWidget *view)
     }
     
     if (sel.cur != NULL && sel.prev != NULL) {
-	hover_one(sw, sel.cur, sel.prev, sel.prev_pos);
+	hover_one(sw, sel.cur, sel.prev);
 	
 	const gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.prev), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
@@ -390,7 +375,7 @@ static void item_pressed(GtkGestureMultiPress *gesture, gint n_press, gdouble x,
     
     struct find_selected_t sel;
     find_selected(sw, &sel);
-    hover_one(sw, sel.cur, item, 0);
+    hover_one(sw, sel.cur, item);
     const gchar *fullpath = g_object_get_qdata(G_OBJECT(item), miv_selection_fullpath_quark());
     if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
 	if (miv_display(fullpath, NULL))
@@ -414,7 +399,7 @@ static gboolean item_enter_notify_event(GtkWidget *w, GdkEvent *ev, gpointer use
     
     struct find_selected_t sel;
     find_selected(sw, &sel);
-    hover_one(sw, sel.cur, item, 0);
+    hover_one(sw, sel.cur, item);
     
     return TRUE;
 }
@@ -484,7 +469,7 @@ static void add_items_iter(gpointer data, gpointer user_data)
 	gtk_widget_show(item);
 	if (p->first_item == NULL) {
 	    p->first_item = item;
-	    hover_one(sw, NULL, item, 0);
+	    hover_one(sw, NULL, item);
 	}
     }
 }
