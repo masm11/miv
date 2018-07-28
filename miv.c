@@ -392,6 +392,11 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
 	}
 	break;
 	
+    case GDK_KEY_Home:
+    case GDK_KEY_End:
+	image_selection_view_key_event(image_selection_view, event, selw);
+	break;
+	
     case GDK_KEY_1:
 	params->scale = 0;
 	transform_needed = TRUE;

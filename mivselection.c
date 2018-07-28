@@ -68,6 +68,7 @@ static void select_one(struct miv_selection_t *sw, GtkWidget *from, GtkWidget *t
 }
 
 struct find_selected_t {
+    GtkWidget *first, *last;
     GtkWidget *prev, *cur, *next;
     GtkWidget *sel;
     int prev_pos, cur_pos, next_pos;
@@ -79,6 +80,11 @@ struct find_selected_t {
 static void find_selected_iter(GtkWidget *w, gpointer user_data)
 {
     struct find_selected_t *sel = user_data;
+    
+    if (sel->first == NULL)
+	sel->first = w;
+    
+    sel->last = w;
     
     if (sel->cur == NULL) {
 	if (!(gtk_widget_get_state_flags(w) & GTK_STATE_FLAG_PRELIGHT)) {
@@ -105,6 +111,7 @@ static void find_selected_iter(GtkWidget *w, gpointer user_data)
 
 static void find_selected(struct miv_selection_t *sw, struct find_selected_t *sel)
 {
+    sel->first = sel->last = NULL;
     sel->prev = sel->cur = sel->next = sel->sel = NULL;
     sel->prev_pos = sel->cur_pos = sel->next_pos = sel->sel_pos = -1;
     sel->pos = 0;
@@ -125,6 +132,22 @@ static void select_prev(struct miv_selection_t *sw, GtkWidget *view)
     find_selected(sw, &sel);
     if (sel.cur != NULL && sel.prev != NULL)
 	hover_one(sw, sel.cur, sel.prev, sel.prev_pos);
+}
+
+static void select_first(struct miv_selection_t *sw, GtkWidget *view)
+{
+    struct find_selected_t sel;
+    find_selected(sw, &sel);
+    if (sel.cur != NULL && sel.first != NULL)
+	hover_one(sw, sel.cur, sel.first, 0);
+}
+
+static void select_last(struct miv_selection_t *sw, GtkWidget *view)
+{
+    struct find_selected_t sel;
+    find_selected(sw, &sel);
+    if (sel.cur != NULL && sel.last != NULL)
+	hover_one(sw, sel.cur, sel.last, 0);
 }
 
 static void display_next(struct miv_selection_t *sw, GtkWidget *view)
@@ -221,6 +244,12 @@ void image_selection_view_key_event(GtkWidget *widget, GdkEventKey *event, struc
 	    display_prev(sw, widget);
 	else
 	    select_prev(sw, widget);
+	break;
+    case GDK_KEY_Home:
+	select_first(sw, widget);
+	break;
+    case GDK_KEY_End:
+	select_last(sw, widget);
 	break;
     case GDK_KEY_space:
 	display_next(sw, widget);
