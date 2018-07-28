@@ -7,6 +7,7 @@
 #include "thumbnail_creator.h"
 #include "miv.h"
 #include "mivjobqueue.h"
+#include "items_creator.h"
 
 static void move_to_dir(struct miv_selection_t *sw, const gchar *path, gboolean display_first);
 
@@ -16,15 +17,19 @@ struct miv_selection_t {
     GtkWidget *hbox;
     GtkWidget *curpath;
     
+#if 0
     GIOChannel *ioch;
     
     MivJobQueue *queue;
     MivJobQueue *replace_queue;
+#endif
     
     struct add_item_t {
 	gchar *dirname;
 	GtkWidget *first_item;
     } add_items_w;
+    
+    struct items_creator_t *cr;
 };
 
 G_DEFINE_QUARK(miv-selection-fullpath, miv_selection_fullpath)
@@ -250,7 +255,7 @@ void image_selection_view_key_event(GtkWidget *widget, GdkEventKey *event, struc
 
 #define SIZE 100.0
 
-static GtkWidget *create_image_selection_file(const char *dir, const char *name, gchar *fullpath)
+static GtkWidget *create_image_selection_file(gchar *fullpath)
 {
     // box: for margin/padding. eventbox doesn't supports event selection.
     GtkWidget *outer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
@@ -278,13 +283,16 @@ static GtkWidget *create_image_selection_file(const char *dir, const char *name,
     g_object_set_qdata(G_OBJECT(outer), miv_selection_vbox_quark(), vbox);
     g_object_set_qdata(G_OBJECT(outer), miv_selection_image_quark(), image);
     
+#if 0
     struct thumbnail_creator_job_t *job = thumbnail_creator_job_new(fullpath, outer);
     g_object_set_qdata_full(G_OBJECT(outer), miv_selection_job_quark(), job, NULL);
     thumbnail_creator_put_job(job);
+#endif
     
     return outer;
 }
 
+#if 0
 static void replace_image_selection_file(gpointer data, gpointer user_data)
 {
     struct thumbnail_creator_job_t *job = data;
@@ -312,8 +320,9 @@ static void replace_image_selection_file(gpointer data, gpointer user_data)
     g_object_set_qdata(G_OBJECT(evbox), miv_selection_image_quark(), img);
     g_object_set_qdata(G_OBJECT(evbox), miv_selection_job_quark(), NULL);
 }
+#endif
 
-static GtkWidget *create_image_selection_dir(const char *dir, const char *name, gchar *fullpath)
+static GtkWidget *create_image_selection_dir(gchar *fullpath)
 {
     GtkWidget *outer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     GtkStyleContext *style_context = gtk_widget_get_style_context(outer);
@@ -343,6 +352,7 @@ static GtkWidget *create_image_selection_dir(const char *dir, const char *name, 
 
 static gboolean item_draw(GtkWidget *w, cairo_t *cr, gpointer user_data)
 {
+#if 0
     struct miv_selection_t *sw = user_data;
     struct thumbnail_creator_job_t *job = g_object_get_qdata(G_OBJECT(w), miv_selection_job_quark());
     if (job != NULL) {
@@ -357,6 +367,7 @@ static gboolean item_draw(GtkWidget *w, cairo_t *cr, gpointer user_data)
 	    thumbnail_creator_prioritize(job);
     }
     
+#endif
     return FALSE;
 }
 
@@ -404,21 +415,23 @@ static gboolean item_enter_notify_event(GtkWidget *w, GdkEvent *ev, gpointer use
     return TRUE;
 }
 
-static GtkWidget *create_image_selection_item(struct miv_selection_t *sw, const char *dir, const char *name, gboolean *isimage)
+static GtkWidget *create_image_selection_item(struct miv_selection_t *sw, const char *name, gboolean *isimage)
 {
-    gchar *fullpath;
+    gchar *fullpath = g_strdup(name);
     GtkWidget *w;
     
+#if 0
     if (strcmp(dir, "/") != 0)
 	fullpath = g_strdup_printf("%s/%s", dir, name);
     else
 	fullpath = g_strdup_printf("/%s", name);
+#endif
     
     if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
-	w = create_image_selection_file(dir, name, fullpath);
+	w = create_image_selection_file(fullpath);
 	*isimage = TRUE;
     } else {
-	w = create_image_selection_dir(dir, name, fullpath);
+	w = create_image_selection_dir(fullpath);
 	*isimage = FALSE;
     }
     
@@ -453,25 +466,32 @@ static void hbox_size_allocate(GtkWidget *w, GtkAllocation *alloc, gpointer user
     gtk_adjustment_set_upper(adj, alloc->width);
 }
 
-static void add_items_iter(gpointer data, gpointer user_data)
+static GtkWidget *add_items_iter(const gchar *fullpath, gpointer user_data)
 {
     struct miv_selection_t *sw = user_data;
-    const gchar *name = data;
+#if 0
     struct add_item_t *p = &sw->add_items_w;
+#endif
     
+#if 0
     if (name[0] == '.' && strcmp(name, "..") != 0)
 	return;
+#endif
     
     gboolean isimage;
-    GtkWidget *item = create_image_selection_item(sw, p->dirname, name, &isimage);
+    GtkWidget *item = create_image_selection_item(sw, fullpath, &isimage);
     if (item != NULL) {
 	gtk_box_pack_start(GTK_BOX(sw->hbox), item, FALSE, FALSE, 0);
 	gtk_widget_show(item);
+#if 0
 	if (p->first_item == NULL) {
 	    p->first_item = item;
 	    hover_one(sw, NULL, item);
 	}
+#endif
     }
+    
+    return item;
 }
 
 static int compare_names(gconstpointer a, gconstpointer b)
@@ -526,14 +546,18 @@ static void move_to_dir(struct miv_selection_t *sw, const gchar *path, gboolean 
     g_ptr_array_insert(ary, 0, g_strdup(".."));
     
     
+#if 0
     miv_job_queue_cancel_all(sw->queue);
     miv_job_queue_cancel_all(sw->replace_queue);
+#endif
     
+#if 0
     GList *lp = thumbnail_creator_cancel();
     while (lp != NULL) {
 	struct thumbnail_creator_job_t *job = lp->data;
 	lp = g_list_remove(lp, job);
     }
+#endif
     
     printf("destroying items.\n");
     gtk_container_foreach(GTK_CONTAINER(sw->hbox), (GtkCallback) gtk_widget_destroy, NULL);
@@ -541,16 +565,28 @@ static void move_to_dir(struct miv_selection_t *sw, const gchar *path, gboolean 
     
     printf("adding items.\n");
     
+    GList *list = NULL;
+    for (int i = 0; i < ary->len; i++)
+	list = g_list_append(list, g_ptr_array_index(ary, i));
+    
+    sw->cr = items_creator_new(list, sw);
+    items_creator_set_add_handler(sw->cr, add_items_iter);
+    
+    
+    
+#if 0
     sw->add_items_w.dirname = dirname;
     sw->add_items_w.first_item = NULL;
     for (int i = 0; i < ary->len; i++)
 	miv_job_queue_enqueue(sw->queue, g_ptr_array_index(ary, i), sw, g_free);
+#endif
     
     g_ptr_array_free(ary, TRUE);
     
     printf("done.\n");
 }
 
+#if 0
 static gboolean thumbnail_creator_done(GIOChannel *ch, GIOCondition cond, gpointer user_data)
 {
     struct miv_selection_t *sw = user_data;
@@ -568,13 +604,16 @@ static gboolean thumbnail_creator_done(GIOChannel *ch, GIOCondition cond, gpoint
     
     return TRUE;
 }
+#endif
 
 struct miv_selection_t *miv_selection_create(const gchar *dirname, gboolean display_first)
 {
     struct miv_selection_t *sw = g_new0(struct miv_selection_t, 1);
     
+#if 0
     sw->queue = miv_job_queue_new(G_PRIORITY_DEFAULT_IDLE, add_items_iter);
     sw->replace_queue = miv_job_queue_new(G_PRIORITY_DEFAULT_IDLE + 20, replace_image_selection_file);
+#endif
     
     sw->vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_widget_set_name(sw->vbox, "image-selection");
@@ -599,8 +638,10 @@ struct miv_selection_t *miv_selection_create(const gchar *dirname, gboolean disp
     gtk_box_pack_start(GTK_BOX(sw->vbox), sw->curpath, FALSE, TRUE, 0);
     gtk_widget_show(sw->curpath);
     
+#if 0
     sw->ioch = thumbnail_creator_init();
     g_io_add_watch(sw->ioch, G_IO_IN, thumbnail_creator_done, sw);
+#endif
     
     move_to_dir(sw, dirname, display_first);
     

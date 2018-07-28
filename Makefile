@@ -1,4 +1,4 @@
-OBJS = miv.o mivlayout.o mivselection.o thumbnail_creator.o mivjobqueue.o
+OBJS = miv.o mivlayout.o mivselection.o mivjobqueue.o items_creator.o
 
 miv: $(OBJS)
 	cc -o miv $(OBJS) `pkg-config --libs gtk+-3.0` -lm
