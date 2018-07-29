@@ -2,6 +2,10 @@
 #include <math.h>
 #include <time.h>
 
+#define PRIORITY_HIGH	G_PRIORITY_DEFAULT_IDLE
+#define PRIORITY_ADD	(G_PRIORITY_DEFAULT_IDLE + 20)
+#define PRIORITY_LOW	(G_PRIORITY_DEFAULT_IDLE + 40)
+
 struct item_t {
     const gchar *fullpath;
     GdkPixbuf *pixbuf;
@@ -94,6 +98,7 @@ static void *items_creator_thread(void *parm)
 	}
 	g_mutex_unlock(&w->pending_mutex);
 	
+	printf("create pixbuf: %s (%d)\n", ip->fullpath, high);
 	ip->pixbuf = create_pixbuf(ip->fullpath);
 	if (ip->pixbuf == NULL) {
 	    g_free(ip);
@@ -102,9 +107,11 @@ static void *items_creator_thread(void *parm)
 	
 	g_mutex_lock(&w->done_mutex);
 	if (high) {
+	    printf("to high\n");
 	    w->done_high_item_list = g_list_append(w->done_high_item_list, ip);
 	    write(w->fds[1], "2", 1);
 	} else {
+	    printf("to low\n");
 	    w->done_low_item_list = g_list_append(w->done_low_item_list, ip);
 	    write(w->fds[1], "1", 1);
 	}
@@ -137,6 +144,7 @@ static gboolean idle_handler_to_add(gpointer user_data)
     return TRUE;
 }
 
+static gboolean idle_handler_to_replace_low(gpointer user_data);
 static gboolean idle_handler_to_replace_high(gpointer user_data)
 {
     struct items_creator_t *w = user_data;
@@ -144,15 +152,21 @@ static gboolean idle_handler_to_replace_high(gpointer user_data)
     
     glong n = now();
     
+    printf("high: 0\n");
     g_mutex_lock(&w->done_mutex);
-    if (w->done_high_item_list != NULL) {
+    while (w->done_high_item_list != NULL) {
 	ip = w->done_high_item_list->data;
 	w->done_high_item_list = g_list_remove(w->done_high_item_list, ip);
+	printf("high: found: %s\n", ip->fullpath);
 	
-	if (n - ip->last_high_time >= 1000) {
-	    w->done_low_item_list = g_list_append(w->done_low_item_list, ip);
-	    ip = NULL;
-	}
+	if (n - ip->last_high_time < 1000)
+	    break;
+	
+	printf("high: lower: %s\n", ip->fullpath);
+	w->done_low_item_list = g_list_prepend(w->done_low_item_list, ip);
+	if (w->low_idle_id == 0)
+	    w->low_idle_id = g_idle_add_full(PRIORITY_LOW, idle_handler_to_replace_low, w, NULL);
+	ip = NULL;
     }
     g_mutex_unlock(&w->done_mutex);
     
@@ -162,6 +176,7 @@ static gboolean idle_handler_to_replace_high(gpointer user_data)
 	g_free(ip);
 	return TRUE;
     } else {
+	printf("no more high.\n");
 	w->high_idle_id = 0;
 	return FALSE;
     }
@@ -175,19 +190,19 @@ static gboolean idle_handler_to_replace_low(gpointer user_data)
     printf("low: 0\n");
     g_mutex_lock(&w->done_mutex);
     if (w->done_low_item_list != NULL) {
-	printf("low: 1\n");
 	ip = w->done_low_item_list->data;
 	w->done_low_item_list = g_list_remove(w->done_low_item_list, ip);
+	printf("low: found: %s\n", ip->fullpath);
     }
     g_mutex_unlock(&w->done_mutex);
     
     if (ip != NULL) {
-	printf("low: 2\n");
 	(*w->replace_handler)(ip->item, ip->pixbuf, w->user_data);
 	g_object_unref(ip->pixbuf);
 	g_free(ip);
 	return TRUE;
     } else {
+	printf("no more low.\n");
 	w->low_idle_id = 0;
 	return FALSE;
     }
@@ -208,11 +223,11 @@ static gboolean ready(GIOChannel *ch, GIOCondition cond, gpointer user_data)
     switch (buf[0]) {
     case '1':	// low
 	if (w->low_idle_id == 0)
-	    w->low_idle_id = g_idle_add_full(G_PRIORITY_DEFAULT_IDLE + 20, idle_handler_to_replace_low, w, NULL);
+	    w->low_idle_id = g_idle_add_full(PRIORITY_LOW, idle_handler_to_replace_low, w, NULL);
 	break;
     case '2':	// high
 	if (w->high_idle_id == 0)
-	    w->high_idle_id = g_idle_add_full(G_PRIORITY_DEFAULT_IDLE, idle_handler_to_replace_high, w, NULL);
+	    w->high_idle_id = g_idle_add_full(PRIORITY_HIGH, idle_handler_to_replace_high, w, NULL);
 	break;
     default:
 	printf("bad byte read.");
@@ -242,7 +257,7 @@ struct items_creator_t *items_creator_new(GList *fullpaths, gpointer user_data)
 	w->add_list = g_list_append(w->add_list, ip);
     }
     
-    w->add_list_idle_id = g_idle_add_full(G_PRIORITY_DEFAULT_IDLE, idle_handler_to_add, w, NULL);
+    w->add_list_idle_id = g_idle_add_full(PRIORITY_ADD, idle_handler_to_add, w, NULL);
     
     if (pipe(w->fds) == -1) {
 	perror("pipe");
@@ -265,4 +280,41 @@ void items_creator_set_add_handler(struct items_creator_t *w, GtkWidget *(*handl
 void items_creator_set_replace_handler(struct items_creator_t *w, void (*handler)(GtkWidget *item, GdkPixbuf *pixbuf, gpointer user_data))
 {
     w->replace_handler = handler;
+}
+
+static gboolean item_comparator(gconstpointer a, gconstpointer b)
+{
+    const struct item_t *ip = a;
+    const GtkWidget *w = b;
+    return ip->item != w;
+}
+
+void items_creator_prioritize(struct items_creator_t *w, GtkWidget *item)
+{
+    g_mutex_lock(&w->pending_mutex);
+    
+    GList *lp = g_list_find_custom(w->pending_low_item_list, item, item_comparator);
+    if (lp != NULL) {
+	printf("higher pending\n");
+	struct item_t *ip = lp->data;
+	w->pending_low_item_list = g_list_delete_link(w->pending_low_item_list, lp);
+	w->pending_high_item_list = g_list_append(w->pending_high_item_list, ip);
+	g_cond_signal(&w->pending_cond);
+    }
+    
+    g_mutex_unlock(&w->pending_mutex);
+    
+    g_mutex_lock(&w->done_mutex);
+    
+    lp = g_list_find_custom(w->done_low_item_list, item, item_comparator);
+    if (lp != NULL) {
+	printf("higher done\n");
+	struct item_t *ip = lp->data;
+	w->done_low_item_list = g_list_delete_link(w->done_low_item_list, lp);
+	w->done_high_item_list = g_list_append(w->done_high_item_list, ip);
+	if (w->high_idle_id == 0)
+	    w->high_idle_id = g_idle_add_full(PRIORITY_HIGH, idle_handler_to_replace_high, w, NULL);
+    }
+    
+    g_mutex_unlock(&w->done_mutex);
 }

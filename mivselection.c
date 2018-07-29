@@ -378,22 +378,16 @@ static GtkWidget *create_image_selection_dir(gchar *fullpath)
 
 static gboolean item_draw(GtkWidget *w, cairo_t *cr, gpointer user_data)
 {
-#if 0
     struct miv_selection_t *sw = user_data;
-    struct thumbnail_creator_job_t *job = g_object_get_qdata(G_OBJECT(w), miv_selection_job_quark());
-    if (job != NULL) {
-	GtkAllocation alloc;
-	gtk_widget_get_allocation(w, &alloc);
-	
-	GtkAdjustment *adj = gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(sw->viewport));
-	double beg = gtk_adjustment_get_value(adj);
-	double end = beg + gtk_adjustment_get_page_size(adj);
-	
-	if (!(alloc.x + alloc.width < beg || alloc.x >= end))
-	    thumbnail_creator_prioritize(job);
-    }
+    GtkAllocation alloc;
+    gtk_widget_get_allocation(w, &alloc);
     
-#endif
+    GtkAdjustment *adj = gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(sw->viewport));
+    double beg = gtk_adjustment_get_value(adj);
+    double end = beg + gtk_adjustment_get_page_size(adj);
+    
+    if (!(alloc.x + alloc.width < beg || alloc.x >= end))
+	items_creator_prioritize(sw->cr, w);
     return FALSE;
 }
 
@@ -509,9 +503,9 @@ static GtkWidget *add_items_iter(const gchar *fullpath, gpointer user_data)
     if (item != NULL) {
 	gtk_box_pack_start(GTK_BOX(sw->hbox), item, FALSE, FALSE, 0);
 	gtk_widget_show(item);
-#if 0
-	if (p->first_item == NULL) {
-	    p->first_item = item;
+#if 1
+	if (sw->add_items_w.first_item == NULL) {
+	    sw->add_items_w.first_item = item;
 	    hover_one(sw, NULL, item);
 	}
 #endif
@@ -571,7 +565,7 @@ static void move_to_dir(struct miv_selection_t *sw, const gchar *path, gboolean 
 	g_ptr_array_sort(ary, compare_names);
     }
     
-    g_ptr_array_insert(ary, 0, g_strdup(".."));
+    g_ptr_array_insert(ary, 0, g_strdup_printf("%s/..", dirname));
     
     
 #if 0
@@ -603,9 +597,9 @@ static void move_to_dir(struct miv_selection_t *sw, const gchar *path, gboolean 
     
     
     
+    sw->add_items_w.first_item = NULL;
 #if 0
     sw->add_items_w.dirname = dirname;
-    sw->add_items_w.first_item = NULL;
     for (int i = 0; i < ary->len; i++)
 	miv_job_queue_enqueue(sw->queue, g_ptr_array_index(ary, i), sw, g_free);
 #endif
