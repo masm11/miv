@@ -291,12 +291,15 @@ static gboolean item_comparator(gconstpointer a, gconstpointer b)
 
 void items_creator_prioritize(struct items_creator_t *w, GtkWidget *item)
 {
+    glong n = now();
+    
     g_mutex_lock(&w->pending_mutex);
     
     GList *lp = g_list_find_custom(w->pending_low_item_list, item, item_comparator);
     if (lp != NULL) {
-	printf("higher pending\n");
 	struct item_t *ip = lp->data;
+	printf("higher pending %s\n", ip->fullpath);
+	ip->last_high_time = n;
 	w->pending_low_item_list = g_list_delete_link(w->pending_low_item_list, lp);
 	w->pending_high_item_list = g_list_append(w->pending_high_item_list, ip);
 	g_cond_signal(&w->pending_cond);
@@ -308,8 +311,9 @@ void items_creator_prioritize(struct items_creator_t *w, GtkWidget *item)
     
     lp = g_list_find_custom(w->done_low_item_list, item, item_comparator);
     if (lp != NULL) {
-	printf("higher done\n");
 	struct item_t *ip = lp->data;
+	printf("higher done %s\n", ip->fullpath);
+	ip->last_high_time = n;
 	w->done_low_item_list = g_list_delete_link(w->done_low_item_list, lp);
 	w->done_high_item_list = g_list_append(w->done_high_item_list, ip);
 	if (w->high_idle_id == 0)
