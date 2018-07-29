@@ -472,9 +472,7 @@ static GtkWidget *add_items_iter(const gchar *fullpath, gpointer user_data)
 
 static int compare_names(gconstpointer a, gconstpointer b)
 {
-    const char * const *ap = a;
-    const char * const *bp = b;
-    return strcmp(*ap, *bp);
+    return strcmp(a, b);
 }
 
 static gchar *getcanonpath(const gchar *path)
@@ -503,7 +501,7 @@ static void move_to_dir(struct miv_selection_t *sw, const gchar *path, gboolean 
     if (dirname == NULL)
 	dirname = g_strdup(path);
     
-    GPtrArray *ary = g_ptr_array_new();
+    GList *list = NULL;
     
     GError *err = NULL;
     GDir *dir = g_dir_open(dirname, 0, &err);
@@ -514,14 +512,14 @@ static void move_to_dir(struct miv_selection_t *sw, const gchar *path, gboolean 
 		break;
 	    if (name[0] == '.')
 		continue;
-	    g_ptr_array_add(ary, g_strdup_printf("%s/%s", dirname, name));
+	    list = g_list_prepend(list, g_strdup_printf("%s/%s", dirname, name));
 	}
 	g_dir_close(dir);
 	
-	g_ptr_array_sort(ary, compare_names);
+	list = g_list_sort(list, compare_names);
     }
     
-    g_ptr_array_insert(ary, 0, g_strdup_printf("%s/..", dirname));
+    list = g_list_prepend(list, g_strdup_printf("%s/..", dirname));
     
     
     if (sw->cr != NULL) {
@@ -535,18 +533,12 @@ static void move_to_dir(struct miv_selection_t *sw, const gchar *path, gboolean 
     
     printf("adding items.\n");
     
-    GList *list = NULL;
-    for (int i = 0; i < ary->len; i++)
-	list = g_list_append(list, g_ptr_array_index(ary, i));
-    
     sw->add_items_w.first_item = NULL;
     
     sw->cr = items_creator_new(list, sw);
     items_creator_set_add_handler(sw->cr, add_items_iter);
     items_creator_set_replace_handler(sw->cr, replace_item_image);
     
-    
-    g_ptr_array_free(ary, TRUE);
     
     printf("done.\n");
 }
