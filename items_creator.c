@@ -42,13 +42,27 @@ struct items_creator_t {
     gboolean finishing;
 };
 
-static glong now(void) {
+static inline glong now(void) {
     struct timespec ts;
     if (clock_gettime(CLOCK_MONOTONIC_COARSE, &ts) == -1) {
 	perror("clock_gettime");
 	exit(1);
     }
     return (glong) ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+static inline struct item_t *alloc_item(const gchar *fullpath)
+{
+    struct item_t *ip = g_new0(struct item_t, 1);
+    ip->fullpath = fullpath;
+    return ip;
+}
+
+static inline void free_item(struct item_t *ip)
+{
+    if (ip->pixbuf != NULL)
+	g_object_unref(ip->pixbuf);
+    g_free(ip);
 }
 
 static GdkPixbuf *create_pixbuf(const gchar *fullpath)
@@ -104,9 +118,8 @@ static void *items_creator_thread(void *parm)
 	}
 	g_mutex_unlock(&w->pending_mutex);
 	
-	ip->pixbuf = create_pixbuf(ip->fullpath);
-	if (ip->pixbuf == NULL) {
-	    g_free(ip);
+	if ((ip->pixbuf = create_pixbuf(ip->fullpath)) == NULL) {
+	    free_item(ip);
 	    continue;
 	}
 	
@@ -173,8 +186,6 @@ static gboolean idle_handler_to_replace_high(gpointer user_data)
     
     if (ip != NULL) {
 	(*w->replace_handler)(ip->item, ip->pixbuf, w->user_data);
-	g_object_unref(ip->pixbuf);
-	g_free(ip);
 	return TRUE;
     } else {
 	w->high_idle_id = 0;
@@ -196,8 +207,7 @@ static gboolean idle_handler_to_replace_low(gpointer user_data)
     
     if (ip != NULL) {
 	(*w->replace_handler)(ip->item, ip->pixbuf, w->user_data);
-	g_object_unref(ip->pixbuf);
-	g_free(ip);
+	free_item(ip);
 	return TRUE;
     } else {
 	w->low_idle_id = 0;
@@ -248,9 +258,7 @@ struct items_creator_t *items_creator_new(GList *fullpaths, gpointer user_data)
 	const gchar *fullpath = fullpaths->data;
 	fullpaths = g_list_remove(fullpaths, fullpath);
 	
-	struct item_t *ip = g_new0(struct item_t, 1);
-	ip->fullpath = fullpath;
-	
+	struct item_t *ip = alloc_item(fullpath);
 	w->add_list = g_list_append(w->add_list, ip);
     }
     
@@ -291,9 +299,7 @@ void items_creator_destroy(struct items_creator_t *w)
 	while (lp != NULL) {
 	    struct item_t *ip = lp->data;
 	    lp = g_list_remove(lp, ip);
-	    if (ip->pixbuf != NULL)
-		g_object_unref(ip->pixbuf);
-	    g_free(ip);
+	    free_item(ip);
 	}
     }
     free_list(w->add_list);
