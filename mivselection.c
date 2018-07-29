@@ -442,13 +442,6 @@ static GtkWidget *create_image_selection_item(struct miv_selection_t *sw, const 
     gchar *fullpath = g_strdup(name);
     GtkWidget *w;
     
-#if 0
-    if (strcmp(dir, "/") != 0)
-	fullpath = g_strdup_printf("%s/%s", dir, name);
-    else
-	fullpath = g_strdup_printf("/%s", name);
-#endif
-    
     if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
 	w = create_image_selection_file(fullpath);
 	*isimage = TRUE;
@@ -491,26 +484,16 @@ static void hbox_size_allocate(GtkWidget *w, GtkAllocation *alloc, gpointer user
 static GtkWidget *add_items_iter(const gchar *fullpath, gpointer user_data)
 {
     struct miv_selection_t *sw = user_data;
-#if 0
-    struct add_item_t *p = &sw->add_items_w;
-#endif
-    
-#if 0
-    if (name[0] == '.' && strcmp(name, "..") != 0)
-	return;
-#endif
     
     gboolean isimage;
     GtkWidget *item = create_image_selection_item(sw, fullpath, &isimage);
     if (item != NULL) {
 	gtk_box_pack_start(GTK_BOX(sw->hbox), item, FALSE, FALSE, 0);
 	gtk_widget_show(item);
-#if 1
 	if (sw->add_items_w.first_item == NULL) {
 	    sw->add_items_w.first_item = item;
 	    hover_one(sw, NULL, item);
 	}
-#endif
     }
     
     return isimage ? item : NULL;
