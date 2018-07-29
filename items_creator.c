@@ -38,6 +38,8 @@ struct items_creator_t {
     GList *pending_low_item_list;
     GList *done_high_item_list;
     GList *done_low_item_list;
+    
+    gboolean finishing;
 };
 
 static glong now(void) {
@@ -78,6 +80,10 @@ static void *items_creator_thread(void *parm)
 	
 	g_mutex_lock(&w->pending_mutex);
 	while (TRUE) {
+	    if (w->finishing) {
+		g_mutex_unlock(&w->pending_mutex);
+		goto finish;
+	    }
 	    if (ip == NULL) {
 		if (w->pending_high_item_list != NULL) {
 		    ip = w->pending_high_item_list->data;
@@ -118,6 +124,7 @@ static void *items_creator_thread(void *parm)
 	g_mutex_unlock(&w->done_mutex);
     }
     
+ finish:
     return NULL;
 }
 
@@ -270,6 +277,73 @@ struct items_creator_t *items_creator_new(GList *fullpaths, gpointer user_data)
     w->thr = g_thread_new(NULL, items_creator_thread, w);
     
     return w;
+}
+
+void items_creator_destroy(struct items_creator_t *w)
+{
+    g_mutex_lock(&w->pending_mutex);
+    w->finishing = TRUE;
+    g_cond_signal(&w->pending_cond);
+    g_mutex_unlock(&w->pending_mutex);
+    
+    g_thread_join(w->thr);
+    
+    if (w->high_idle_id != 0)
+	g_source_remove(w->high_idle_id);
+    if (w->low_idle_id != 0)
+	g_source_remove(w->low_idle_id);
+    if (w->add_list_idle_id != 0)
+	g_source_remove(w->add_list_idle_id);
+    if (w->io_id != 0)
+	g_source_remove(w->io_id);
+    
+    while (w->add_list != NULL) {
+	struct item_t *ip = w->add_list->data;
+	w->add_list = g_list_remove(w->add_list, ip);
+	if (ip->pixbuf != NULL)
+	    g_object_unref(ip->pixbuf);
+	g_free(ip);
+    }
+    
+    while (w->pending_high_item_list != NULL) {
+	struct item_t *ip = w->pending_high_item_list->data;
+	w->pending_high_item_list = g_list_remove(w->pending_high_item_list, ip);
+	if (ip->pixbuf != NULL)
+	    g_object_unref(ip->pixbuf);
+	g_free(ip);
+    }
+    
+    while (w->pending_low_item_list != NULL) {
+	struct item_t *ip = w->pending_low_item_list->data;
+	w->pending_low_item_list = g_list_remove(w->pending_low_item_list, ip);
+	if (ip->pixbuf != NULL)
+	    g_object_unref(ip->pixbuf);
+	g_free(ip);
+    }
+    
+    while (w->done_high_item_list != NULL) {
+	struct item_t *ip = w->done_high_item_list->data;
+	w->done_high_item_list = g_list_remove(w->done_high_item_list, ip);
+	if (ip->pixbuf != NULL)
+	    g_object_unref(ip->pixbuf);
+	g_free(ip);
+    }
+    
+    while (w->done_low_item_list != NULL) {
+	struct item_t *ip = w->done_low_item_list->data;
+	w->done_low_item_list = g_list_remove(w->done_low_item_list, ip);
+	if (ip->pixbuf != NULL)
+	    g_object_unref(ip->pixbuf);
+	g_free(ip);
+    }
+    
+    g_io_channel_unref(w->ioch);
+    close(w->fds[0]);
+    close(w->fds[1]);
+    
+    g_mutex_clear(&w->pending_mutex);
+    g_cond_clear(&w->pending_cond);
+    g_mutex_clear(&w->done_mutex);
 }
 
 void items_creator_set_add_handler(struct items_creator_t *w, GtkWidget *(*handler)(const gchar *fullpath, gpointer user_data))

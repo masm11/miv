@@ -580,6 +580,10 @@ static void move_to_dir(struct miv_selection_t *sw, const gchar *path, gboolean 
 	lp = g_list_remove(lp, job);
     }
 #endif
+    if (sw->cr != NULL) {
+	items_creator_destroy(sw->cr);
+	sw->cr = NULL;
+    }
     
     printf("destroying items.\n");
     gtk_container_foreach(GTK_CONTAINER(sw->hbox), (GtkCallback) gtk_widget_destroy, NULL);
