@@ -15,9 +15,7 @@ struct miv_selection_t {
     GtkWidget *hbox;
     GtkWidget *curpath;
     
-    struct add_item_t {
-	GtkWidget *first_item;
-    } add_items_w;
+    GtkWidget *first_item;
     
     struct items_creator_t *cr;
 };
@@ -450,15 +448,16 @@ static GtkWidget *create_image_selection_item(struct miv_selection_t *sw, const 
     }
     
     if (w != NULL) {
-	g_object_set_qdata_full(G_OBJECT(w), miv_selection_fullpath_quark(), fullpath, (GDestroyNotify) g_free);
+	GObject *gobj = G_OBJECT(w);
+	g_object_set_qdata_full(gobj, miv_selection_fullpath_quark(), fullpath, (GDestroyNotify) g_free);
 	
-	g_signal_connect(G_OBJECT(w), "draw", G_CALLBACK(item_draw), sw);
+	g_signal_connect(gobj, "draw", G_CALLBACK(item_draw), sw);
 	
-	GtkWidget *evbox = g_object_get_qdata(G_OBJECT(w), miv_selection_evbox_quark());
+	GtkWidget *evbox = g_object_get_qdata(gobj, miv_selection_evbox_quark());
 	GtkGesture *gesture = gtk_gesture_multi_press_new(evbox);
 	gtk_event_controller_set_propagation_phase(GTK_EVENT_CONTROLLER(gesture), GTK_PHASE_TARGET);
 	g_signal_connect(G_OBJECT(gesture), "pressed", G_CALLBACK(item_pressed), sw);
-	g_object_set_qdata_full(G_OBJECT(w), miv_selection_gesture_quark(), gesture, g_object_unref);  // to unref gesture on widget destruction.
+	g_object_set_qdata_full(gobj, miv_selection_gesture_quark(), gesture, g_object_unref);  // to unref gesture on widget destruction.
 	g_signal_connect(G_OBJECT(evbox), "enter-notify-event", G_CALLBACK(item_enter_notify_event), sw);
     } else
 	g_free(fullpath);
@@ -491,8 +490,8 @@ static GtkWidget *add_item(const gchar *fullpath, gpointer user_data)
     if (item != NULL) {
 	gtk_box_pack_start(GTK_BOX(sw->hbox), item, FALSE, FALSE, 0);
 	gtk_widget_show(item);
-	if (sw->add_items_w.first_item == NULL) {
-	    sw->add_items_w.first_item = item;
+	if (sw->first_item == NULL) {
+	    sw->first_item = item;
 	    hover_one(sw, NULL, item);
 	}
     }
@@ -562,13 +561,10 @@ static void move_to_dir(struct miv_selection_t *sw, const gchar *path, gboolean 
 	sw->cr = NULL;
     }
     
-    printf("destroying items.\n");
     gtk_container_foreach(GTK_CONTAINER(sw->hbox), (GtkCallback) gtk_widget_destroy, NULL);
     
     
-    printf("adding items.\n");
-    
-    sw->add_items_w.first_item = NULL;
+    sw->first_item = NULL;
     
     sw->cr = items_creator_new(list, sw);
     items_creator_set_add_handler(sw->cr, add_item);
@@ -576,7 +572,6 @@ static void move_to_dir(struct miv_selection_t *sw, const gchar *path, gboolean 
     
     
     g_free(dirname);
-    printf("done.\n");
 }
 
 struct miv_selection_t *miv_selection_create(const gchar *dirname, gboolean display_first)
