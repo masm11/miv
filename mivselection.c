@@ -481,7 +481,7 @@ static void hbox_size_allocate(GtkWidget *w, GtkAllocation *alloc, gpointer user
     gtk_adjustment_set_upper(adj, alloc->width);
 }
 
-static GtkWidget *add_items_iter(const gchar *fullpath, gpointer user_data)
+static GtkWidget *add_item(const gchar *fullpath, gpointer user_data)
 {
     struct miv_selection_t *sw = user_data;
     
@@ -570,7 +570,7 @@ static void move_to_dir(struct miv_selection_t *sw, const gchar *path, gboolean 
     sw->add_items_w.first_item = NULL;
     
     sw->cr = items_creator_new(list, sw);
-    items_creator_set_add_handler(sw->cr, add_items_iter);
+    items_creator_set_add_handler(sw->cr, add_item);
     items_creator_set_replace_handler(sw->cr, replace_item_image);
     
     
