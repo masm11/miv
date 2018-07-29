@@ -66,6 +66,10 @@ struct find_selected_t {
     GtkWidget *first, *last;
     GtkWidget *prev, *cur, *next;
     GtkWidget *sel;
+    GtkWidget *pgup, *pgdn;
+    
+    gdouble pageup_begin, pageup_end;
+    gdouble pagedn_begin, pagedn_end;
 };
 
 static void find_selected_iter(GtkWidget *w, gpointer user_data)
@@ -94,12 +98,27 @@ static void find_selected_iter(GtkWidget *w, gpointer user_data)
     
     if ((gtk_widget_get_state_flags(w) & GTK_STATE_FLAG_SELECTED))
 	sel->sel = w;
+    
+    if (alloc.x < sel->pageup_end)
+	sel->pgup = w;
+    if (alloc.x + alloc.width > sel->pagedn_begin && sel->pgdn == NULL)
+	sel->pgdn = w;
 }
 
 static void find_selected(struct miv_selection_t *sw, struct find_selected_t *sel)
 {
     sel->first = sel->last = NULL;
     sel->prev = sel->cur = sel->next = sel->sel = NULL;
+    sel->pgup = sel->pgdn = NULL;
+    
+    GtkAdjustment *adj = gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(sw->viewport));
+    double val = gtk_adjustment_get_value(adj);
+    double psize = gtk_adjustment_get_page_size(adj);
+    sel->pageup_begin = val - psize - psize / 2;
+    sel->pageup_end = sel->pageup_begin + psize;
+    sel->pagedn_begin = val + psize + psize / 2;
+    sel->pagedn_end = sel->pagedn_begin + psize;
+    
     gtk_container_foreach(GTK_CONTAINER(sw->hbox), find_selected_iter, sel);
 }
 
@@ -133,6 +152,22 @@ static void select_last(struct miv_selection_t *sw, GtkWidget *view)
     find_selected(sw, &sel);
     if (sel.cur != NULL && sel.last != NULL)
 	hover_one(sw, sel.cur, sel.last);
+}
+
+static void select_pageup(struct miv_selection_t *sw, GtkWidget *view)
+{
+    struct find_selected_t sel;
+    find_selected(sw, &sel);
+    if (sel.cur != NULL && sel.pgup != NULL)
+	hover_one(sw, sel.cur, sel.pgup);
+}
+
+static void select_pagedn(struct miv_selection_t *sw, GtkWidget *view)
+{
+    struct find_selected_t sel;
+    find_selected(sw, &sel);
+    if (sel.cur != NULL && sel.pgdn != NULL)
+	hover_one(sw, sel.cur, sel.pgdn);
 }
 
 static void display_next(struct miv_selection_t *sw, GtkWidget *view)
@@ -235,6 +270,12 @@ void image_selection_view_key_event(GtkWidget *widget, GdkEventKey *event, struc
 	break;
     case GDK_KEY_End:
 	select_last(sw, widget);
+	break;
+    case GDK_KEY_Page_Up:
+	select_pageup(sw, widget);
+	break;
+    case GDK_KEY_Page_Down:
+	select_pagedn(sw, widget);
 	break;
     case GDK_KEY_space:
 	display_next(sw, widget);

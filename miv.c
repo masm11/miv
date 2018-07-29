@@ -394,6 +394,8 @@ static gboolean key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer 
 	
     case GDK_KEY_Home:
     case GDK_KEY_End:
+    case GDK_KEY_Page_Up:
+    case GDK_KEY_Page_Down:
 	image_selection_view_key_event(image_selection_view, event, selw);
 	break;
 	
