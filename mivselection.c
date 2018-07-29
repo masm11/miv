@@ -72,6 +72,11 @@ static void find_selected_iter(GtkWidget *w, gpointer user_data)
 {
     struct find_selected_t *sel = user_data;
     
+    GtkAllocation alloc;
+    gtk_widget_get_allocation(w, &alloc);
+    if (alloc.x < 0)
+	return;
+    
     if (sel->first == NULL)
 	sel->first = w;
     
