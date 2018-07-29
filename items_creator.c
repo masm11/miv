@@ -104,7 +104,6 @@ static void *items_creator_thread(void *parm)
 	}
 	g_mutex_unlock(&w->pending_mutex);
 	
-	printf("create pixbuf: %s (%d)\n", ip->fullpath, high);
 	ip->pixbuf = create_pixbuf(ip->fullpath);
 	if (ip->pixbuf == NULL) {
 	    g_free(ip);
@@ -113,11 +112,9 @@ static void *items_creator_thread(void *parm)
 	
 	g_mutex_lock(&w->done_mutex);
 	if (high) {
-	    printf("to high\n");
 	    w->done_high_item_list = g_list_append(w->done_high_item_list, ip);
 	    write(w->fds[1], "2", 1);
 	} else {
-	    printf("to low\n");
 	    w->done_low_item_list = g_list_append(w->done_low_item_list, ip);
 	    write(w->fds[1], "1", 1);
 	}
@@ -159,17 +156,14 @@ static gboolean idle_handler_to_replace_high(gpointer user_data)
     
     glong n = now();
     
-    printf("high: 0\n");
     g_mutex_lock(&w->done_mutex);
     while (w->done_high_item_list != NULL) {
 	ip = w->done_high_item_list->data;
 	w->done_high_item_list = g_list_remove(w->done_high_item_list, ip);
-	printf("high: found: %s\n", ip->fullpath);
 	
 	if (n - ip->last_high_time < 1000)
 	    break;
 	
-	printf("high: lower: %s\n", ip->fullpath);
 	w->done_low_item_list = g_list_prepend(w->done_low_item_list, ip);
 	if (w->low_idle_id == 0)
 	    w->low_idle_id = g_idle_add_full(PRIORITY_LOW, idle_handler_to_replace_low, w, NULL);
@@ -183,7 +177,6 @@ static gboolean idle_handler_to_replace_high(gpointer user_data)
 	g_free(ip);
 	return TRUE;
     } else {
-	printf("no more high.\n");
 	w->high_idle_id = 0;
 	return FALSE;
     }
@@ -194,12 +187,10 @@ static gboolean idle_handler_to_replace_low(gpointer user_data)
     struct items_creator_t *w = user_data;
     struct item_t *ip = NULL;
     
-    printf("low: 0\n");
     g_mutex_lock(&w->done_mutex);
     if (w->done_low_item_list != NULL) {
 	ip = w->done_low_item_list->data;
 	w->done_low_item_list = g_list_remove(w->done_low_item_list, ip);
-	printf("low: found: %s\n", ip->fullpath);
     }
     g_mutex_unlock(&w->done_mutex);
     
@@ -209,7 +200,6 @@ static gboolean idle_handler_to_replace_low(gpointer user_data)
 	g_free(ip);
 	return TRUE;
     } else {
-	printf("no more low.\n");
 	w->low_idle_id = 0;
 	return FALSE;
     }
@@ -288,54 +278,29 @@ void items_creator_destroy(struct items_creator_t *w)
     
     g_thread_join(w->thr);
     
-    if (w->high_idle_id != 0)
-	g_source_remove(w->high_idle_id);
-    if (w->low_idle_id != 0)
-	g_source_remove(w->low_idle_id);
-    if (w->add_list_idle_id != 0)
-	g_source_remove(w->add_list_idle_id);
-    if (w->io_id != 0)
-	g_source_remove(w->io_id);
-    
-    while (w->add_list != NULL) {
-	struct item_t *ip = w->add_list->data;
-	w->add_list = g_list_remove(w->add_list, ip);
-	if (ip->pixbuf != NULL)
-	    g_object_unref(ip->pixbuf);
-	g_free(ip);
+    void stop_idle(guint id) {
+	if (id != 0)
+	    g_source_remove(id);
     }
+    stop_idle(w->high_idle_id);
+    stop_idle(w->low_idle_id);
+    stop_idle(w->add_list_idle_id);
+    stop_idle(w->io_id);
     
-    while (w->pending_high_item_list != NULL) {
-	struct item_t *ip = w->pending_high_item_list->data;
-	w->pending_high_item_list = g_list_remove(w->pending_high_item_list, ip);
-	if (ip->pixbuf != NULL)
-	    g_object_unref(ip->pixbuf);
-	g_free(ip);
+    void free_list(GList *lp) {
+	while (lp != NULL) {
+	    struct item_t *ip = lp->data;
+	    lp = g_list_remove(lp, ip);
+	    if (ip->pixbuf != NULL)
+		g_object_unref(ip->pixbuf);
+	    g_free(ip);
+	}
     }
-    
-    while (w->pending_low_item_list != NULL) {
-	struct item_t *ip = w->pending_low_item_list->data;
-	w->pending_low_item_list = g_list_remove(w->pending_low_item_list, ip);
-	if (ip->pixbuf != NULL)
-	    g_object_unref(ip->pixbuf);
-	g_free(ip);
-    }
-    
-    while (w->done_high_item_list != NULL) {
-	struct item_t *ip = w->done_high_item_list->data;
-	w->done_high_item_list = g_list_remove(w->done_high_item_list, ip);
-	if (ip->pixbuf != NULL)
-	    g_object_unref(ip->pixbuf);
-	g_free(ip);
-    }
-    
-    while (w->done_low_item_list != NULL) {
-	struct item_t *ip = w->done_low_item_list->data;
-	w->done_low_item_list = g_list_remove(w->done_low_item_list, ip);
-	if (ip->pixbuf != NULL)
-	    g_object_unref(ip->pixbuf);
-	g_free(ip);
-    }
+    free_list(w->add_list);
+    free_list(w->pending_high_item_list);
+    free_list(w->pending_low_item_list);
+    free_list(w->done_high_item_list);
+    free_list(w->done_low_item_list);
     
     g_io_channel_unref(w->ioch);
     close(w->fds[0]);
@@ -372,7 +337,6 @@ void items_creator_prioritize(struct items_creator_t *w, GtkWidget *item)
     GList *lp = g_list_find_custom(w->pending_low_item_list, item, item_comparator);
     if (lp != NULL) {
 	struct item_t *ip = lp->data;
-	printf("higher pending %s\n", ip->fullpath);
 	ip->last_high_time = n;
 	w->pending_low_item_list = g_list_delete_link(w->pending_low_item_list, lp);
 	w->pending_high_item_list = g_list_append(w->pending_high_item_list, ip);
@@ -386,7 +350,6 @@ void items_creator_prioritize(struct items_creator_t *w, GtkWidget *item)
     lp = g_list_find_custom(w->done_low_item_list, item, item_comparator);
     if (lp != NULL) {
 	struct item_t *ip = lp->data;
-	printf("higher done %s\n", ip->fullpath);
 	ip->last_high_time = n;
 	w->done_low_item_list = g_list_delete_link(w->done_low_item_list, lp);
 	w->done_high_item_list = g_list_append(w->done_high_item_list, ip);
