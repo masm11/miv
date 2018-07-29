@@ -499,11 +499,6 @@ static GtkWidget *add_items_iter(const gchar *fullpath, gpointer user_data)
     return isimage ? item : NULL;
 }
 
-static int compare_names(gconstpointer a, gconstpointer b)
-{
-    return strcmp(a, b);
-}
-
 static gchar *getcanonpath(const gchar *path)
 {
     gchar *p = NULL;
@@ -530,8 +525,18 @@ static void move_to_dir(struct miv_selection_t *sw, const gchar *path, gboolean 
     if (dirname == NULL)
 	dirname = g_strdup(path);
     
-    GList *list = NULL;
+    inline gchar *make_fullpath(const gchar *name) {
+	if (strcmp(dirname, "/") != 0)
+	    return g_strdup_printf("%s/%s", dirname, name);
+	else
+	    return g_strdup_printf("/%s", name);
+    }
     
+    int compare_names(gconstpointer a, gconstpointer b) {
+	return strcmp(a, b);
+    }
+    
+    GList *list = NULL;
     GError *err = NULL;
     GDir *dir = g_dir_open(dirname, 0, &err);
     if (err == NULL) {
@@ -541,14 +546,14 @@ static void move_to_dir(struct miv_selection_t *sw, const gchar *path, gboolean 
 		break;
 	    if (name[0] == '.')
 		continue;
-	    list = g_list_prepend(list, g_strdup_printf("%s/%s", dirname, name));
+	    list = g_list_prepend(list, make_fullpath(name));
 	}
 	g_dir_close(dir);
 	
 	list = g_list_sort(list, compare_names);
     }
     
-    list = g_list_prepend(list, g_strdup_printf("%s/..", dirname));
+    list = g_list_prepend(list, make_fullpath(".."));
     
     
     if (sw->cr != NULL) {
