@@ -292,6 +292,32 @@ static GtkWidget *create_image_selection_file(gchar *fullpath)
     return outer;
 }
 
+static void replace_item_image(GtkWidget *item, GdkPixbuf *pixbuf, gpointer user_data)
+{
+    struct miv_selection_t *sw = user_data;
+    
+    GtkWidget *vbox = g_object_get_qdata(G_OBJECT(item), miv_selection_vbox_quark());
+    assert(GTK_IS_BOX(vbox));
+    GtkWidget *img = g_object_get_qdata(G_OBJECT(item), miv_selection_image_quark());
+    assert(GTK_IS_IMAGE(img));
+    gtk_widget_destroy(img);
+    
+    if (pixbuf != NULL)
+	img = gtk_image_new_from_pixbuf(pixbuf);
+    else
+	img = gtk_image_new_from_icon_name("image-loading", GTK_ICON_SIZE_LARGE_TOOLBAR);
+    assert(GTK_IS_IMAGE(img));
+    
+    gtk_widget_set_size_request(img, SIZE, SIZE);
+    gtk_widget_set_halign(img, GTK_ALIGN_CENTER);
+    gtk_widget_set_valign(img, GTK_ALIGN_END);
+    gtk_box_pack_start(GTK_BOX(vbox), img, TRUE, TRUE, 0);
+    gtk_widget_show(img);
+    
+    g_object_set_qdata(G_OBJECT(item), miv_selection_image_quark(), img);
+    g_object_set_qdata(G_OBJECT(item), miv_selection_job_quark(), NULL);
+}
+
 #if 0
 static void replace_image_selection_file(gpointer data, gpointer user_data)
 {
@@ -491,7 +517,7 @@ static GtkWidget *add_items_iter(const gchar *fullpath, gpointer user_data)
 #endif
     }
     
-    return item;
+    return isimage ? item : NULL;
 }
 
 static int compare_names(gconstpointer a, gconstpointer b)
@@ -536,7 +562,9 @@ static void move_to_dir(struct miv_selection_t *sw, const gchar *path, gboolean 
 	    const gchar *name = g_dir_read_name(dir);
 	    if (name == NULL)
 		break;
-	    g_ptr_array_add(ary, g_strdup(name));
+	    if (name[0] == '.')
+		continue;
+	    g_ptr_array_add(ary, g_strdup_printf("%s/%s", dirname, name));
 	}
 	g_dir_close(dir);
 	
@@ -571,6 +599,7 @@ static void move_to_dir(struct miv_selection_t *sw, const gchar *path, gboolean 
     
     sw->cr = items_creator_new(list, sw);
     items_creator_set_add_handler(sw->cr, add_items_iter);
+    items_creator_set_replace_handler(sw->cr, replace_item_image);
     
     
     
