@@ -1,2 +1,4 @@
 /miv
 *.o
+/.dep
+/.dep.new
