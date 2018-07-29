@@ -44,7 +44,7 @@ struct items_creator_t {
 
 static inline glong now(void) {
     struct timespec ts;
-    if (clock_gettime(CLOCK_MONOTONIC_COARSE, &ts) == -1) {
+    if (G_UNLIKELY(clock_gettime(CLOCK_MONOTONIC_COARSE, &ts) == -1)) {
 	perror("clock_gettime");
 	exit(1);
     }
@@ -60,7 +60,7 @@ static inline struct item_t *alloc_item(const gchar *fullpath)
 
 static inline void free_item(struct item_t *ip)
 {
-    if (ip->pixbuf != NULL)
+    if (G_LIKELY(ip->pixbuf != NULL))
 	g_object_unref(ip->pixbuf);
     g_free(ip);
 }
@@ -70,7 +70,7 @@ static GdkPixbuf *create_pixbuf(const gchar *fullpath)
 #define SIZE 100.0
     GError *err = NULL;
     GdkPixbuf *pb = NULL, *pb_old = gdk_pixbuf_new_from_file(fullpath, &err);
-    if (err == NULL) {
+    if (G_LIKELY(err == NULL)) {
 	int orig_w = gdk_pixbuf_get_width(pb_old);
 	int orig_h = gdk_pixbuf_get_height(pb_old);
 	double scalew = SIZE / orig_w;
@@ -94,11 +94,11 @@ static void *items_creator_thread(void *parm)
 	
 	g_mutex_lock(&w->pending_mutex);
 	while (TRUE) {
-	    if (w->finishing) {
+	    if (G_UNLIKELY(w->finishing)) {
 		g_mutex_unlock(&w->pending_mutex);
 		goto finish;
 	    }
-	    if (ip == NULL) {
+	    if (G_LIKELY(ip == NULL)) {
 		if (w->pending_high_item_list != NULL) {
 		    ip = w->pending_high_item_list->data;
 		    w->pending_high_item_list = g_list_remove(w->pending_high_item_list, ip);
@@ -112,7 +112,7 @@ static void *items_creator_thread(void *parm)
 		    high = FALSE;
 		}
 	    }
-	    if (ip != NULL)
+	    if (G_LIKELY(ip != NULL))
 		break;
 	    g_cond_wait(&w->pending_cond, &w->pending_mutex);
 	}
@@ -143,7 +143,7 @@ static gboolean idle_handler_to_add(gpointer user_data)
     struct items_creator_t *w = user_data;
     struct item_t *ip;
     
-    if (w->add_list == NULL) {
+    if (G_UNLIKELY(w->add_list == NULL)) {
 	w->add_list_idle_id = 0;
 	return FALSE;
     }
@@ -170,7 +170,7 @@ static gboolean idle_handler_to_replace_high(gpointer user_data)
     glong n = now();
     
     g_mutex_lock(&w->done_mutex);
-    while (w->done_high_item_list != NULL) {
+    while (G_LIKELY(w->done_high_item_list != NULL)) {
 	ip = w->done_high_item_list->data;
 	w->done_high_item_list = g_list_remove(w->done_high_item_list, ip);
 	
@@ -199,13 +199,13 @@ static gboolean idle_handler_to_replace_low(gpointer user_data)
     struct item_t *ip = NULL;
     
     g_mutex_lock(&w->done_mutex);
-    if (w->done_low_item_list != NULL) {
+    if (G_LIKELY(w->done_low_item_list != NULL)) {
 	ip = w->done_low_item_list->data;
 	w->done_low_item_list = g_list_remove(w->done_low_item_list, ip);
     }
     g_mutex_unlock(&w->done_mutex);
     
-    if (ip != NULL) {
+    if (G_LIKELY(ip != NULL)) {
 	(*w->replace_handler)(ip->item, ip->pixbuf, w->user_data);
 	free_item(ip);
 	return TRUE;
@@ -222,7 +222,7 @@ static gboolean ready(GIOChannel *ch, GIOCondition cond, gpointer user_data)
     gsize s;
     GError *err = NULL;
     
-    if (g_io_channel_read_chars(w->ioch, buf, 1, &s, &err) != G_IO_STATUS_NORMAL) {
+    if (G_UNLIKELY(g_io_channel_read_chars(w->ioch, buf, 1, &s, &err) != G_IO_STATUS_NORMAL)) {
 	printf("g_io_channel_read_chars() failed.\n");
 	return FALSE;
     }
@@ -264,7 +264,7 @@ struct items_creator_t *items_creator_new(GList *fullpaths, gpointer user_data)
     
     w->add_list_idle_id = g_idle_add_full(PRIORITY_ADD, idle_handler_to_add, w, NULL);
     
-    if (pipe(w->fds) == -1) {
+    if (G_UNLIKELY(pipe(w->fds) == -1)) {
 	perror("pipe");
 	exit(1);
     }
