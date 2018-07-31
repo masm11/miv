@@ -25,6 +25,7 @@ G_DEFINE_QUARK(miv-selection-image, miv_selection_image)
 G_DEFINE_QUARK(miv-selection-vbox, miv_selection_vbox)
 G_DEFINE_QUARK(miv-selection-evbox, miv_selection_evbox)
 G_DEFINE_QUARK(miv-selection-gesture, miv_selection_gesture)
+G_DEFINE_QUARK(miv-selection-is-movie, miv_selection_is_movie)
 
 static void hover_one(struct miv_selection_t *sw, GtkWidget *from, GtkWidget *to)
 {
@@ -234,8 +235,21 @@ static void enter_it(struct miv_selection_t *sw, GtkWidget *view)
     if (sel.cur != NULL) {
 	const gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.cur), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
-	    if (miv_display(fullpath, NULL))
+	    if (!g_object_get_qdata(G_OBJECT(sel.cur), miv_selection_is_movie_quark())) {
+		if (miv_display(fullpath, NULL))
+		    select_one(sw, sel.sel, sel.cur);
+	    } else {
 		select_one(sw, sel.sel, sel.cur);
+		switch (fork()) {
+		case -1:
+		    perror("fork");
+		    exit(1);
+		case 0:
+		    execlp("mpv", "mpv", "-fs", fullpath, NULL);
+		    perror("execlp: mpv");
+		    exit(1);
+		}
+	    }
 	} else
 	    move_to_dir(sw, fullpath, FALSE);
     }
@@ -345,6 +359,7 @@ static void replace_item_image(GtkWidget *item, GdkPixbuf *pixbuf, gpointer user
     
     GObject *gobj = G_OBJECT(item);
     g_object_set_qdata(gobj, miv_selection_image_quark(), img);
+    g_object_set_qdata(gobj, miv_selection_is_movie_quark(), g_object_get_data(G_OBJECT(pixbuf), "miv-is-movie"));
 }
 
 static GtkWidget *create_image_selection_dir(gchar *fullpath)

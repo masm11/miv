@@ -1,4 +1,5 @@
 #include <gtk/gtk.h>
+#include <gst/gst.h>
 #include <math.h>
 #include <time.h>
 
@@ -65,12 +66,101 @@ static inline void free_item(struct item_t *ip)
     g_free(ip);
 }
 
+static gboolean wait_for_state(GstElement *elem)
+{
+    struct timespec start;
+    clock_gettime(CLOCK_MONOTONIC_COARSE, &start);
+    
+    while (TRUE) {
+	GstState state, pending;
+	switch (gst_element_get_state(elem, &state, &pending, 0)) {
+	case GST_STATE_CHANGE_FAILURE:
+	    printf("failure state=%d, pending=%d.\n", state, pending);
+	    break;
+	case GST_STATE_CHANGE_SUCCESS:
+	    printf("success state=%d, pending=%d.\n", state, pending);
+	    if (state == GST_STATE_NULL)
+		return FALSE;
+	    if (state == GST_STATE_PAUSED)
+		return TRUE;
+	    break;
+	case GST_STATE_CHANGE_ASYNC:
+	    printf("async state=%d, pending=%d.\n", state, pending);
+	    if (pending == GST_STATE_NULL) {
+		if (state == GST_STATE_NULL)
+		    return FALSE;
+		if (state == GST_STATE_PAUSED)
+		    return TRUE;
+	    }
+	    break;
+	case GST_STATE_CHANGE_NO_PREROLL:
+	    printf("no-preroll state=%d, pending=%d.\n", state, pending);
+	    break;
+	}
+	
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC_COARSE, &now);
+	if ((now.tv_sec - start.tv_sec) * 1000 + (now.tv_nsec - start.tv_nsec) / 1000000 >= 2000)
+	    return FALSE;
+	
+	usleep(10000);
+    }
+}
+
+static GdkPixbuf *get_pixbuf_from_movie(const gchar *fullpath)
+{
+    GdkPixbuf *pb = NULL;
+    
+    GstElement *play = gst_element_factory_make ("playbin", "play");
+    gchar *uri = g_strdup_printf("file://%s", fullpath);
+    printf("uri=%s\n", uri);
+    g_object_set (G_OBJECT (play), "uri", uri, NULL);
+    g_free(uri);
+    
+    GstElement *pixbuf = gst_element_factory_make("gdkpixbufsink", "pixbuf");
+    printf("pixbuf=%p\n", pixbuf);
+    g_object_set(G_OBJECT(play), "video-sink", pixbuf, NULL);
+    if (pixbuf == NULL)
+	exit(1);
+    
+    gst_element_set_state (play, GST_STATE_PAUSED);
+    
+    if (!wait_for_state(pixbuf))
+	goto finish;
+    
+    gint64 duration;
+    if (!gst_element_query_duration(play, GST_FORMAT_TIME, &duration)) {
+	printf("can't get duration.\n");
+	goto finish;
+    }
+    printf("duration: %ldns\n", duration);
+    
+    gst_element_seek_simple(play, GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH, duration / 10);
+    
+    if (!wait_for_state(pixbuf))
+	goto finish;
+    
+    g_object_get(G_OBJECT(pixbuf), "last-pixbuf", &pb, NULL);
+    
+ finish:
+    gst_element_set_state (play, GST_STATE_NULL);
+    gst_object_unref (GST_OBJECT(play));
+    
+    return pb;
+}
+
 static GdkPixbuf *create_pixbuf(const gchar *fullpath)
 {
 #define SIZE 100.0
     GError *err = NULL;
     GdkPixbuf *pb = NULL, *pb_old = gdk_pixbuf_new_from_file(fullpath, &err);
-    if (G_LIKELY(err == NULL)) {
+    gboolean is_movie = FALSE;
+    if (pb_old == NULL) {
+	pb_old = get_pixbuf_from_movie(fullpath);
+	if (pb_old != NULL)
+	    is_movie = TRUE;
+    }
+    if (pb_old != NULL) {
 	int orig_w = gdk_pixbuf_get_width(pb_old);
 	int orig_h = gdk_pixbuf_get_height(pb_old);
 	double scalew = SIZE / orig_w;
@@ -79,6 +169,10 @@ static GdkPixbuf *create_pixbuf(const gchar *fullpath)
 	int w = orig_w * scale;
 	int h = orig_h * scale;
 	pb = gdk_pixbuf_scale_simple(pb_old, w, h, GDK_INTERP_NEAREST);
+	if (is_movie) {
+	    static gboolean true = TRUE;
+	    g_object_set_data(G_OBJECT(pb), "miv-is-movie", &true);
+	}
     }
 #undef SIZE
     return pb;

@@ -1,4 +1,5 @@
 #include <gtk/gtk.h>
+#include <gst/gst.h>
 #include <math.h>
 #include <assert.h>
 #include "mivlayout.h"
@@ -541,6 +542,7 @@ static void init_style(void)
 int main(int argc, char **argv)
 {
     gtk_init(&argc, &argv);
+    gst_init(NULL, NULL);
     
     if (argc < 2) {
 	fprintf(stderr, "No file specified.\n");
