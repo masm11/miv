@@ -125,9 +125,9 @@ static GdkPixbuf *get_pixbuf_from_movie(const gchar *fullpath)
     g_main_context_push_thread_default(mw->ctxt);
     mw->loop = g_main_loop_new(mw->ctxt, FALSE);
     
-    mw->pipeline = gst_element_factory_make ("playbin", "play");
+    mw->pipeline = gst_element_factory_make ("playbin", NULL);
     mw->uri = g_strdup_printf("file://%s", fullpath);
-    mw->pixbuf = gst_element_factory_make("gdkpixbufsink", "pixbuf");
+    mw->pixbuf = gst_element_factory_make("gdkpixbufsink", NULL);
     g_object_set(G_OBJECT(mw->pipeline),
 	    "uri", mw->uri,
 	    "video-sink", mw->pixbuf,
