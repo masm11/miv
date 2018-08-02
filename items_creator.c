@@ -105,6 +105,8 @@ static gboolean wait_for_state(GstElement *elem)
 	
 	usleep(10000);
     }
+    
+    /* NOT REACHED */
 }
 
 static GdkPixbuf *get_pixbuf_from_movie(const gchar *fullpath)
@@ -135,7 +137,8 @@ static GdkPixbuf *get_pixbuf_from_movie(const gchar *fullpath)
     }
     printf("duration: %ldns\n", duration);
     
-    gst_element_seek_simple(play, GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH, duration / 10);
+    gint64 pos = log(duration / 1000000000.0) * log(10) * 1000000000;
+    gst_element_seek_simple(play, GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH, pos);
     
     if (!wait_for_state(pixbuf))
 	goto finish;
