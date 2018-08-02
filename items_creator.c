@@ -147,7 +147,7 @@ static GdkPixbuf *get_pixbuf_from_movie(const gchar *fullpath)
     
     if (mw->pipeline != NULL) {
 	gst_element_set_state (mw->pipeline, GST_STATE_NULL);
-	gst_object_unref (GST_OBJECT(mw->pipeline));
+	gst_object_unref (GST_OBJECT(mw->pipeline));		// pixbuf also be unref'ed.
     }
     if (mw->loop != NULL)
 	g_main_loop_unref(mw->loop);
