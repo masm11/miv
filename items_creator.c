@@ -97,8 +97,12 @@ static gboolean bus_callback(GstBus *bus, GstMessage *message, gpointer user_dat
 		break;
 	    }
 	    
-	    gint64 pos = log(mw->duration / 1000000000.0) * log(10) * 1000000000;
+#define NS 1000000000.0
+	    gint64 pos = 0;
+	    if (mw->duration >= 4 * NS)
+		pos = sqrt(mw->duration / NS) * NS;
 	    gst_element_seek_simple(mw->pipeline, GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH, pos);
+#undef NS
 	    
 	    mw->step++;
 	    break;
