@@ -66,90 +66,97 @@ static inline void free_item(struct item_t *ip)
     g_free(ip);
 }
 
-static gboolean wait_for_state(GstElement *elem)
-{
-    struct timespec start;
-    clock_gettime(CLOCK_MONOTONIC_COARSE, &start);
+struct movie_work_t {
+    GMainContext *ctxt;
+    GMainLoop *loop;
+    gchar *uri;
+    GstElement *pipeline, *pixbuf;
+    int step;
+    gint64 duration;
     
-    while (TRUE) {
-	GstState state, pending;
-	switch (gst_element_get_state(elem, &state, &pending, 0)) {
-	case GST_STATE_CHANGE_FAILURE:
-	    printf("failure state=%d, pending=%d.\n", state, pending);
-	    break;
-	case GST_STATE_CHANGE_SUCCESS:
-	    printf("success state=%d, pending=%d.\n", state, pending);
-	    if (state == GST_STATE_NULL)
-		return FALSE;
-	    if (state == GST_STATE_PAUSED)
-		return TRUE;
-	    break;
-	case GST_STATE_CHANGE_ASYNC:
-	    printf("async state=%d, pending=%d.\n", state, pending);
-	    if (pending == GST_STATE_NULL) {
-		if (state == GST_STATE_NULL)
-		    return FALSE;
-		if (state == GST_STATE_PAUSED)
-		    return TRUE;
+    GdkPixbuf *pb;
+};
+
+static gboolean bus_callback(GstBus *bus, GstMessage *message, gpointer user_data)
+{
+    struct movie_work_t *mw = user_data;
+    
+    // printf("%s\t%s\n", GST_MESSAGE_TYPE_NAME(message), mw->uri);
+    
+    switch (GST_MESSAGE_TYPE(message)) {
+    case GST_MESSAGE_ERROR:
+	g_main_loop_quit(mw->loop);
+	break;
+	
+    case GST_MESSAGE_ASYNC_DONE:
+	switch (mw->step) {
+	case 0:		// It is done to change state to "paused".
+	    if (!gst_element_query_duration(mw->pipeline, GST_FORMAT_TIME, &mw->duration)) {
+		printf("can't get duration.\n");
+		g_main_loop_quit(mw->loop);
+		break;
 	    }
+	    
+	    gint64 pos = log(mw->duration / 1000000000.0) * log(10) * 1000000000;
+	    gst_element_seek_simple(mw->pipeline, GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH, pos);
+	    
+	    mw->step++;
 	    break;
-	case GST_STATE_CHANGE_NO_PREROLL:
-	    printf("no-preroll state=%d, pending=%d.\n", state, pending);
+	    
+	case 1:		// seeking done.
+	    g_object_get(G_OBJECT(mw->pixbuf), "last-pixbuf", &mw->pb, NULL);
+	    g_main_loop_quit(mw->loop);
 	    break;
 	}
+	break;
 	
-	struct timespec now;
-	clock_gettime(CLOCK_MONOTONIC_COARSE, &now);
-	if ((now.tv_sec - start.tv_sec) * 1000 + (now.tv_nsec - start.tv_nsec) / 1000000 >= 2000)
-	    return FALSE;
-	
-	usleep(10000);
+    default:	// suppress warnings.
+	break;
     }
     
-    /* NOT REACHED */
+    return TRUE;
 }
 
 static GdkPixbuf *get_pixbuf_from_movie(const gchar *fullpath)
 {
-    GdkPixbuf *pb = NULL;
+    struct movie_work_t *mw = g_new0(struct movie_work_t, 1);
     
-    GstElement *play = gst_element_factory_make ("playbin", "play");
-    gchar *uri = g_strdup_printf("file://%s", fullpath);
-    printf("uri=%s\n", uri);
-    g_object_set (G_OBJECT (play), "uri", uri, NULL);
-    g_free(uri);
+    mw->ctxt = g_main_context_new();
+    g_main_context_push_thread_default(mw->ctxt);
+    mw->loop = g_main_loop_new(mw->ctxt, FALSE);
     
-    GstElement *pixbuf = gst_element_factory_make("gdkpixbufsink", "pixbuf");
-    printf("pixbuf=%p\n", pixbuf);
-    g_object_set(G_OBJECT(play), "video-sink", pixbuf, NULL);
-    if (pixbuf == NULL)
-	exit(1);
+    mw->pipeline = gst_element_factory_make ("playbin", "play");
+    mw->uri = g_strdup_printf("file://%s", fullpath);
+    mw->pixbuf = gst_element_factory_make("gdkpixbufsink", "pixbuf");
+    g_object_set(G_OBJECT(mw->pipeline),
+	    "uri", mw->uri,
+	    "video-sink", mw->pixbuf,
+	    NULL);
     
-    gst_element_set_state (play, GST_STATE_PAUSED);
+    GstBus *bus = gst_pipeline_get_bus(GST_PIPELINE(mw->pipeline));
+    gst_bus_add_watch(bus, bus_callback, mw);
+    gst_object_unref(bus);
     
-    if (!wait_for_state(pixbuf))
-	goto finish;
+    gst_element_set_state (mw->pipeline, GST_STATE_PAUSED);
     
-    gint64 duration;
-    if (!gst_element_query_duration(play, GST_FORMAT_TIME, &duration)) {
-	printf("can't get duration.\n");
-	goto finish;
+    g_main_loop_run(mw->loop);
+    
+    if (mw->pipeline != NULL) {
+	gst_element_set_state (mw->pipeline, GST_STATE_NULL);
+	gst_object_unref (GST_OBJECT(mw->pipeline));
     }
-    printf("duration: %ldns\n", duration);
+    if (mw->loop != NULL)
+	g_main_loop_unref(mw->loop);
+    if (mw->ctxt != NULL) {
+	g_main_context_pop_thread_default(mw->ctxt);
+	g_main_context_unref(mw->ctxt);
+    }
+    if (mw->uri != NULL)
+	g_free(mw->uri);
+    GdkPixbuf *ret = mw->pb;
+    g_free(mw);
     
-    gint64 pos = log(duration / 1000000000.0) * log(10) * 1000000000;
-    gst_element_seek_simple(play, GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH, pos);
-    
-    if (!wait_for_state(pixbuf))
-	goto finish;
-    
-    g_object_get(G_OBJECT(pixbuf), "last-pixbuf", &pb, NULL);
-    
- finish:
-    gst_element_set_state (play, GST_STATE_NULL);
-    gst_object_unref (GST_OBJECT(play));
-    
-    return pb;
+    return ret;
 }
 
 static GdkPixbuf *create_pixbuf(const gchar *fullpath)
