@@ -2,6 +2,8 @@
 #include <gst/gst.h>
 #include <math.h>
 #include <time.h>
+#include "movie.h"
+#include "items_creator.h"
 
 #define PRIORITY_HIGH	G_PRIORITY_DEFAULT_IDLE
 #define PRIORITY_ADD	(G_PRIORITY_DEFAULT_IDLE + 20)
@@ -66,103 +68,6 @@ static inline void free_item(struct item_t *ip)
     g_free(ip);
 }
 
-struct movie_work_t {
-    GMainContext *ctxt;
-    GMainLoop *loop;
-    gchar *uri;
-    GstElement *pipeline, *pixbuf;
-    int step;
-    gint64 duration;
-    
-    GdkPixbuf *pb;
-};
-
-static gboolean bus_callback(GstBus *bus, GstMessage *message, gpointer user_data)
-{
-    struct movie_work_t *mw = user_data;
-    
-    // printf("%s\t%s\n", GST_MESSAGE_TYPE_NAME(message), mw->uri);
-    
-    switch (GST_MESSAGE_TYPE(message)) {
-    case GST_MESSAGE_ERROR:
-	g_main_loop_quit(mw->loop);
-	break;
-	
-    case GST_MESSAGE_ASYNC_DONE:
-	switch (mw->step) {
-	case 0:		// It is done to change state to "paused".
-	    if (!gst_element_query_duration(mw->pipeline, GST_FORMAT_TIME, &mw->duration)) {
-		printf("can't get duration.\n");
-		g_main_loop_quit(mw->loop);
-		break;
-	    }
-	    
-#define NS 1000000000.0
-	    gint64 pos = 0;
-	    if (mw->duration >= 4 * NS)
-		pos = sqrt(mw->duration / NS) * NS;
-	    gst_element_seek_simple(mw->pipeline, GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH, pos);
-#undef NS
-	    
-	    mw->step++;
-	    break;
-	    
-	case 1:		// seeking done.
-	    g_object_get(G_OBJECT(mw->pixbuf), "last-pixbuf", &mw->pb, NULL);
-	    g_main_loop_quit(mw->loop);
-	    break;
-	}
-	break;
-	
-    default:	// suppress warnings.
-	break;
-    }
-    
-    return TRUE;
-}
-
-static GdkPixbuf *get_pixbuf_from_movie(const gchar *fullpath)
-{
-    struct movie_work_t *mw = g_new0(struct movie_work_t, 1);
-    
-    mw->ctxt = g_main_context_new();
-    g_main_context_push_thread_default(mw->ctxt);
-    mw->loop = g_main_loop_new(mw->ctxt, FALSE);
-    
-    mw->pipeline = gst_element_factory_make ("playbin", NULL);
-    mw->uri = g_strdup_printf("file://%s", fullpath);
-    mw->pixbuf = gst_element_factory_make("gdkpixbufsink", NULL);
-    g_object_set(G_OBJECT(mw->pipeline),
-	    "uri", mw->uri,
-	    "video-sink", mw->pixbuf,
-	    NULL);
-    
-    GstBus *bus = gst_pipeline_get_bus(GST_PIPELINE(mw->pipeline));
-    gst_bus_add_watch(bus, bus_callback, mw);
-    gst_object_unref(bus);
-    
-    gst_element_set_state (mw->pipeline, GST_STATE_PAUSED);
-    
-    g_main_loop_run(mw->loop);
-    
-    if (mw->pipeline != NULL) {
-	gst_element_set_state (mw->pipeline, GST_STATE_NULL);
-	gst_object_unref (GST_OBJECT(mw->pipeline));		// pixbuf also be unref'ed.
-    }
-    if (mw->loop != NULL)
-	g_main_loop_unref(mw->loop);
-    if (mw->ctxt != NULL) {
-	g_main_context_pop_thread_default(mw->ctxt);
-	g_main_context_unref(mw->ctxt);
-    }
-    if (mw->uri != NULL)
-	g_free(mw->uri);
-    GdkPixbuf *ret = mw->pb;
-    g_free(mw);
-    
-    return ret;
-}
-
 static GdkPixbuf *create_pixbuf(const gchar *fullpath)
 {
 #define SIZE 100.0
@@ -170,7 +75,7 @@ static GdkPixbuf *create_pixbuf(const gchar *fullpath)
     GdkPixbuf *pb = NULL, *pb_old = gdk_pixbuf_new_from_file(fullpath, &err);
     gboolean is_movie = FALSE;
     if (pb_old == NULL) {
-	pb_old = get_pixbuf_from_movie(fullpath);
+	pb_old = movie_get_thumbnail(fullpath);
 	if (pb_old != NULL)
 	    is_movie = TRUE;
     }

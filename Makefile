@@ -1,4 +1,4 @@
-OBJS = miv.o mivlayout.o mivselection.o items_creator.o
+OBJS = miv.o mivlayout.o mivselection.o items_creator.o movie.o
 
 miv: $(OBJS)
 	cc -o miv $(OBJS) `pkg-config --libs gstreamer-1.0 gtk+-3.0` -lm

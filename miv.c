@@ -4,6 +4,7 @@
 #include <assert.h>
 #include "mivlayout.h"
 #include "mivselection.h"
+#include "movie.h"
 #include "miv.h"
 
 enum {
@@ -52,6 +53,9 @@ static struct miv_selection_t *selw;
 static GdkPixbufAnimation *anim = NULL;
 static GdkPixbufAnimationIter *anim_iter = NULL;
 static guint anim_timer = 0;
+
+/* movie */
+static struct movie_work_t *movie = NULL;
 
 G_DEFINE_QUARK(miv-on-wayland, miv_on_wayland)
 
@@ -500,6 +504,18 @@ static void anim_start(GdkPixbufAnimation *an)
     relayout();
 }
 
+static void display_movie_frame(GdkPixbuf *pb)
+{
+    if (pixbuf != NULL) {
+	g_object_unref(pixbuf);
+	pixbuf = NULL;
+    }
+    pixbuf = gdk_pixbuf_copy(pb);
+    
+    transform_replace_image();
+    relayout();
+}
+
 gboolean miv_display(const gchar *path, GError **err)
 {
     GError *err_dummy;
@@ -511,6 +527,10 @@ gboolean miv_display(const gchar *path, GError **err)
     if (*err == NULL) {
 	if (!gdk_pixbuf_animation_is_static_image(an)) {
 	    /* This is really an animation. */
+	    if (movie != NULL) {
+		movie_stop(movie);
+		movie = NULL;
+	    }
 	    anim_start(an);
 	    return TRUE;
 	}
@@ -521,11 +541,22 @@ gboolean miv_display(const gchar *path, GError **err)
     GdkPixbuf *pb = gdk_pixbuf_new_from_file(path, err);
     if (*err == NULL) {
 	anim_stop();	// also unref pixbuf.
+	if (movie != NULL) {
+	    movie_stop(movie);
+	    movie = NULL;
+	}
 	pixbuf = pb;
 	transform_replace_image();
 	relayout();
 	return TRUE;
     }
+    
+    anim_stop();
+    if (movie != NULL) {
+	movie_stop(movie);
+	movie = NULL;
+    }
+    movie = movie_play(path, display_movie_frame);
     
     return FALSE;
 }
