@@ -6,6 +6,8 @@ This is an image and movie player.
 
 This app remember fullscreen, maximize, scale, rotation, and translation across images.
 
+Thumbnail icons of not only images but also movies can be shown.
+
 ## Key Bindings
 
 - `q`: quit
@@ -19,6 +21,8 @@ This app remember fullscreen, maximize, scale, rotation, and translation across 
 - `Enter`: display the image
 - `Space`: display the next image
 - `BackSpace`: display the previous image
+- `1`: reset scale
+- `0`: reset translation
 
 ## License
 
