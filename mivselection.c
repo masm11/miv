@@ -226,7 +226,7 @@ static void display_prev(struct miv_selection_t *sw, GtkWidget *view)
     }
 }
 
-static void enter_it(struct miv_selection_t *sw, GtkWidget *view)
+static void enter_it(struct miv_selection_t *sw, GtkWidget *view, gboolean with_shift_pressed)
 {
     struct find_selected_t sel;
     
@@ -235,10 +235,9 @@ static void enter_it(struct miv_selection_t *sw, GtkWidget *view)
     if (sel.cur != NULL) {
 	const gchar *fullpath = g_object_get_qdata(G_OBJECT(sel.cur), miv_selection_fullpath_quark());
 	if (!g_file_test(fullpath, G_FILE_TEST_IS_DIR)) {
-//	    if (!g_object_get_qdata(G_OBJECT(sel.cur), miv_selection_is_movie_quark())) {
+	    if (!g_object_get_qdata(G_OBJECT(sel.cur), miv_selection_is_movie_quark()) || !with_shift_pressed) {
 		if (miv_display(fullpath, NULL))
 		    select_one(sw, sel.sel, sel.cur);
-#if 0
 	    } else {
 		select_one(sw, sel.sel, sel.cur);
 		switch (fork()) {
@@ -251,7 +250,6 @@ static void enter_it(struct miv_selection_t *sw, GtkWidget *view)
 		    exit(1);
 		}
 	    }
-#endif
 	} else
 	    move_to_dir(sw, fullpath, FALSE);
     }
@@ -297,7 +295,7 @@ void image_selection_view_key_event(GtkWidget *widget, GdkEventKey *event, struc
 	display_prev(sw, widget);
 	break;
     case GDK_KEY_Return:
-	enter_it(sw, widget);
+	enter_it(sw, widget, event->state & GDK_SHIFT_MASK);
 	break;
     }
 }
