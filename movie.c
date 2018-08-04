@@ -1,6 +1,7 @@
 #include <gtk/gtk.h>
 #include <gst/gst.h>
 #include <math.h>
+#include "priority.h"
 #include "movie.h"
 
 struct movie_work_t {
@@ -15,9 +16,17 @@ struct movie_work_t {
     
     GdkPixbuf *pb;
     
-    guint timer_id;
+    guint idle_id;
     void (*play_callback)(GdkPixbuf *);
 };
+
+static gboolean callback_display(gpointer user_data)
+{
+    struct movie_work_t *mw = user_data;
+    (*mw->play_callback)(mw->pb);
+    mw->idle_id = 0;
+    return FALSE;
+}
 
 static gboolean bus_callback__playing(GstBus *bus, GstMessage *message, gpointer user_data)
 {
@@ -34,9 +43,12 @@ static gboolean bus_callback__playing(GstBus *bus, GstMessage *message, gpointer
 	    const GstStructure *struc = gst_message_get_structure(message);
 	    if (gst_structure_has_name(struc, "pixbuf")) {
 		const GValue *val = gst_structure_get_value(struc, "pixbuf");
-		GdkPixbuf *pb = g_value_peek_pointer(val);
-		
-		(*mw->play_callback)(pb);
+		if (mw->pb != NULL)
+		    g_object_unref(mw->pb);
+		mw->pb = g_value_peek_pointer(val);
+		g_object_ref(mw->pb);
+		if (mw->idle_id == 0)
+		    mw->idle_id = g_idle_add_full(PRIORITY_MOVIE, callback_display, mw, NULL);
 	    }
 	}
 	break;
@@ -44,19 +56,6 @@ static gboolean bus_callback__playing(GstBus *bus, GstMessage *message, gpointer
     default:	// suppress warnings.
 	break;
     }
-    
-    return TRUE;
-}
-
-static gboolean timer_callback__playing(gpointer user_data)
-{
-    struct movie_work_t *mw = user_data;
-    GdkPixbuf *pb;
-    
-#if 0
-    g_object_get(G_OBJECT(mw->pixbuf), "last-pixbuf", &pb, NULL);
-    (mw->play_callback)(pb);
-#endif
     
     return TRUE;
 }
@@ -126,15 +125,15 @@ struct movie_work_t *movie_play(const gchar *fullpath, void (*display)(GdkPixbuf
     
     mw->play_callback = display;
     
-    mw->timer_id = g_timeout_add_full(G_PRIORITY_HIGH_IDLE + 50, 17, timer_callback__playing, mw, NULL);
-    
     return mw;
 }
 
 void movie_stop(struct movie_work_t *mw)
 {
-    if (mw->timer_id != 0)
-	g_source_remove(mw->timer_id);
+    if (mw->idle_id != 0)
+	g_source_remove(mw->idle_id);
+    if (mw->pb != NULL)
+	g_object_unref(mw->pb);
     if (mw->pipeline != NULL) {
 	gst_element_set_state (mw->pipeline, GST_STATE_NULL);
 	gst_object_unref (GST_OBJECT(mw->pipeline));		// pixbuf also be unref'ed.

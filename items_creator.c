@@ -3,11 +3,8 @@
 #include <math.h>
 #include <time.h>
 #include "movie.h"
+#include "priority.h"
 #include "items_creator.h"
-
-#define PRIORITY_HIGH	G_PRIORITY_DEFAULT_IDLE
-#define PRIORITY_ADD	(G_PRIORITY_DEFAULT_IDLE + 20)
-#define PRIORITY_LOW	(G_PRIORITY_DEFAULT_IDLE + 40)
 
 struct item_t {
     const gchar *fullpath;
@@ -28,6 +25,7 @@ struct items_creator_t {
     
     GList *add_list;		// items to add.
     guint add_list_idle_id;
+    guint add_list_timer_id;
     GtkWidget *(*add_handler)(const gchar *fullpath, gpointer user_data);
     void (*replace_handler)(GtkWidget *item, GdkPixbuf *pixbuf, gpointer user_data);
     
@@ -151,13 +149,13 @@ static void *items_creator_thread(void *parm)
     return NULL;
 }
 
-static gboolean idle_handler_to_add(gpointer user_data)
+static gboolean handler_to_add(struct items_creator_t *w)
 {
-    struct items_creator_t *w = user_data;
     struct item_t *ip;
     
     if (G_UNLIKELY(w->add_list == NULL)) {
 	w->add_list_idle_id = 0;
+	w->add_list_timer_id = 0;
 	return FALSE;
     }
     
@@ -172,6 +170,24 @@ static gboolean idle_handler_to_add(gpointer user_data)
     g_mutex_unlock(&w->pending_mutex);
     
     return TRUE;
+}
+
+static gboolean idle_handler_to_add(gpointer user_data)
+{
+    struct items_creator_t *w = user_data;
+    gboolean r = handler_to_add(w);
+    if (!r)
+	w->add_list_idle_id = 0;
+    return r;
+}
+
+static gboolean timer_handler_to_add(gpointer user_data)
+{
+    struct items_creator_t *w = user_data;
+    gboolean r = handler_to_add(w);
+    if (!r)
+	w->add_list_timer_id = 0;
+    return r;
 }
 
 static gboolean idle_handler_to_replace_low(gpointer user_data);
@@ -276,6 +292,7 @@ struct items_creator_t *items_creator_new(GList *fullpaths, gpointer user_data)
     }
     
     w->add_list_idle_id = g_idle_add_full(PRIORITY_ADD, idle_handler_to_add, w, NULL);
+    w->add_list_timer_id = g_timeout_add(200, timer_handler_to_add, w);	/* add items slowly even if relayout is busy. */
     
     if (G_UNLIKELY(pipe(w->fds) == -1)) {
 	perror("pipe");
@@ -306,6 +323,7 @@ void items_creator_destroy(struct items_creator_t *w)
     stop_idle(w->high_idle_id);
     stop_idle(w->low_idle_id);
     stop_idle(w->add_list_idle_id);
+    stop_idle(w->add_list_timer_id);
     stop_idle(w->io_id);
     
     void free_list(GList *lp) {

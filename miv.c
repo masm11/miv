@@ -5,6 +5,7 @@
 #include "mivlayout.h"
 #include "mivselection.h"
 #include "movie.h"
+#include "priority.h"
 #include "miv.h"
 
 enum {
@@ -27,8 +28,6 @@ enum {
 
 #define MAX_SCALE		10
 #define DXDY			128
-
-#define ANIM_TIMER_PRIORITY	(G_PRIORITY_DEFAULT_IDLE + 10)	// should be lower than painter.
 
 static GtkWidget *win, *layout = NULL;
 static gboolean is_fullscreened = FALSE;
@@ -481,7 +480,7 @@ static gboolean anim_advance(gpointer user_data)
     
     int msec = gdk_pixbuf_animation_iter_get_delay_time(anim_iter);
     if (msec != -1)
-	anim_timer = g_timeout_add_full(ANIM_TIMER_PRIORITY, msec, (GSourceFunc) anim_advance, NULL, NULL);
+	anim_timer = g_timeout_add_full(PRIORITY_ANIME_TIMER, msec, (GSourceFunc) anim_advance, NULL, NULL);
     
     transform_replace_image();
     relayout();
@@ -498,7 +497,7 @@ static void anim_start(GdkPixbufAnimation *an)
     GdkPixbuf *pb = gdk_pixbuf_animation_iter_get_pixbuf(anim_iter);
     pixbuf = gdk_pixbuf_copy(pb);
     int msec = gdk_pixbuf_animation_iter_get_delay_time(anim_iter);
-    anim_timer = g_timeout_add_full(ANIM_TIMER_PRIORITY, msec, (GSourceFunc) anim_advance, NULL, NULL);
+    anim_timer = g_timeout_add_full(PRIORITY_ANIME_TIMER, msec, (GSourceFunc) anim_advance, NULL, NULL);
     
     transform_replace_image();
     relayout();
