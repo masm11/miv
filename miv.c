@@ -64,14 +64,17 @@ static struct transform_params_t {
     GtkAllocation alloc;
 } transform_params;
 static struct miv_selection_t *selw;
+static gchar *image_path = NULL;
 
 /* animation */
 static GdkPixbufAnimation *anim = NULL;
 static GdkPixbufAnimationIter *anim_iter = NULL;
 static guint anim_timer = 0;
+static gchar *anim_path = NULL;
 
 /* movie */
 static struct movie_work_t *movie = NULL;
+static gchar *movie_path = NULL;
 
 G_DEFINE_QUARK(miv-on-wayland, miv_on_wayland)
 
@@ -230,6 +233,12 @@ static gboolean on_wl(GtkWidget *w)
 static void relayout(void)
 {
     struct transform_params_t *params = &transform_params;
+    
+    if (image_path != NULL) {
+	gchar *title = g_strdup_printf("%s - miv", image_path);
+	gtk_window_set_title(GTK_WINDOW(win), title);
+	g_free(title);
+    }
     
     if (params->is_fullscreen) {
 	if (!is_fullscreened) {
@@ -515,6 +524,9 @@ static void anim_start(GdkPixbufAnimation *an)
     pixbuf = gdk_pixbuf_copy(pb);
     int msec = gdk_pixbuf_animation_iter_get_delay_time(anim_iter);
     anim_timer = g_timeout_add_full(PRIORITY_ANIME_TIMER, msec, (GSourceFunc) anim_advance, NULL, NULL);
+    if (image_path != NULL)
+	g_free(image_path);
+    image_path = g_strdup(anim_path);
     
     transform_replace_image();
     relayout();
@@ -527,6 +539,9 @@ static void display_movie_frame(GdkPixbuf *pb)
 	pixbuf = NULL;
     }
     pixbuf = gdk_pixbuf_copy(pb);
+    if (image_path != NULL)
+	g_free(image_path);
+    image_path = g_strdup(movie_path);
     
     transform_replace_image();
     relayout();
@@ -547,6 +562,9 @@ gboolean miv_display(const gchar *path, GError **err)
 		movie_stop(movie);
 		movie = NULL;
 	    }
+	    if (anim_path != NULL)
+		g_free(anim_path);
+	    anim_path = g_strdup(path);
 	    anim_start(an);
 	    return TRUE;
 	}
@@ -562,6 +580,9 @@ gboolean miv_display(const gchar *path, GError **err)
 	    movie = NULL;
 	}
 	pixbuf = pb;
+	if (image_path != NULL)
+	    g_free(image_path);
+	image_path = g_strdup(path);
 	transform_replace_image();
 	relayout();
 	return TRUE;
@@ -572,6 +593,9 @@ gboolean miv_display(const gchar *path, GError **err)
 	movie_stop(movie);
 	movie = NULL;
     }
+    if (movie_path != NULL)
+	g_free(movie_path);
+    movie_path = g_strdup(path);
     movie = movie_play(path, display_movie_frame);
     
     return FALSE;
