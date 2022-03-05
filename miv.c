@@ -108,6 +108,7 @@ static const char css_text[] =
 ;
 
 static void relayout(void);
+static void update_inhibition(void);
 
 static void set_status_string(int idx, gchar *str)
 {
@@ -295,6 +296,8 @@ static void relayout(void)
 	    break;
 	}
     }
+    
+    update_inhibition();
 }
 
 static void layout_translation_changed(GtkWidget *layout, gpointer data, gpointer user_data)
@@ -599,6 +602,71 @@ gboolean miv_display(const gchar *path, GError **err)
     movie = movie_play(path, display_movie_frame);
     
     return FALSE;
+}
+
+static void update_inhibition(void)
+{
+    static gboolean has_cookie = FALSE;
+    static unsigned int cookie = 0;
+    static GDBusProxy *proxy = NULL;
+    
+    if (proxy == NULL) {
+	proxy = g_dbus_proxy_new_for_bus_sync(
+		G_BUS_TYPE_SESSION,
+		G_DBUS_PROXY_FLAGS_NONE,
+		NULL,
+		"org.kde.Solid.PowerManagement.PolicyAgent",
+		"/org/kde/Solid/PowerManagement/PolicyAgent",
+		"org.kde.Solid.PowerManagement.PolicyAgent",
+		NULL,
+		NULL);
+    }
+    
+    const char *method = NULL;
+    GVariant *args = NULL;
+    if (is_fullscreened) {
+	if (has_cookie)
+	    return;
+	method = "org.kde.Solid.PowerManagement.PolicyAgent.AddInhibition";
+	args = g_variant_new(
+		"(uss)",
+		4,   // ChangeScreenSettings
+		"miv",
+		"Showing images");
+    } else {
+	if (!has_cookie)
+	    return;
+	method = "org.kde.Solid.PowerManagement.PolicyAgent.ReleaseInhibition";
+	args = g_variant_new(
+		"(u)",
+		cookie);
+    }
+    
+    // ----
+    
+    GError *err = NULL;
+    GVariant *v = g_dbus_proxy_call_sync(
+	    proxy,
+	    method,
+	    args,
+	    G_DBUS_CALL_FLAGS_NONE,
+	    -1,
+	    NULL,
+	    &err);
+    if (v == NULL) {
+	fprintf(stderr, "GDBus: %s\n", err->message);
+	return;
+    }
+    
+    // ----
+    
+    if (is_fullscreened) {
+	g_variant_get(v, "(u)", &cookie, NULL);
+	has_cookie = TRUE;
+    } else {
+	has_cookie = FALSE;
+    }
+    g_variant_unref(v);
 }
 
 static void init_style(void)
