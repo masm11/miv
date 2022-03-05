@@ -1,5 +1,5 @@
 /*    miv - Masm11's Image Viewer
- *    Copyright (C) 2018  Yuuki Harano
+ *    Copyright (C) 2018-2022  Yuuki Harano
  *
  *    This program is free software: you can redistribute it and/or modify
  *    it under the terms of the GNU General Public License as published by
